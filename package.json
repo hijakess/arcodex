@@ -2,6 +2,17 @@
   "name": "arc-launchpad",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.18.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@reown/appkit",
+      "bufferutil",
+      "keccak",
+      "sharp",
+      "unrs-resolver",
+      "utf-8-validate"
+    ]
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,6 +20,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@privy-io/react-auth": "^3.36.1",
+    "lightweight-charts": "^5.2.0",
     "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4"
