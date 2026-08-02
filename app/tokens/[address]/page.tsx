@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import TradingViewChart, { genCandles } from "@/components/TradingViewChart";
+import TradingViewChart, { genCandles, candlesToMcap } from "@/components/TradingViewChart";
 import CopyButton from "@/components/CopyButton";
 import { arcTokens } from "@/lib/arcTokens";
 import { formatUsdc, formatNum } from "@/lib/mockData";
@@ -29,6 +29,10 @@ export default function TokenDetailPage() {
   const chartData = useMemo(
     () => genCandles((token?.address ?? "0x").length + Math.round((token?.priceUsdc ?? 0.001) * 1000) || 7, 120),
     [token]
+  );
+  const mcapData = useMemo(
+    () => candlesToMcap(chartData, (token?.mcapUsdc ?? 1) / (token?.priceUsdc ?? 1) || 1_000_000),
+    [chartData, token]
   );
 
   if (!token) {
@@ -98,8 +102,10 @@ export default function TokenDetailPage() {
               </div>
               <div className="mt-3 h-64 w-full">
                 <TradingViewChart
-                  data={chartData}
+                  priceData={chartData}
+                  mcapData={mcapData}
                   accent={up ? "#22d3ee" : "#fb7185"}
+                  showMetricToggle
                 />
               </div>
             </div>

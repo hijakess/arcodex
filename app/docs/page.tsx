@@ -96,75 +96,6 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) -> Arcodex API/Indexer -> 
 
 Arcodex is a protocol for launching and trading community tokens. Tokens launched on the platform carry risk, including total loss. Nothing in this whitepaper is financial advice.`,
   },
-  structure: {
-    title: "Structure",
-    body: `# Arcodex Architecture
-
-## Repository Layout
-
-\`\`\`
-arc-launchpad/
-├── app/
-│   ├── page.tsx              # Home: hero, trending, bonding types
-│   ├── discover/page.tsx     # Discover: Arcodex-launched tokens + sort
-│   ├── tokens/page.tsx       # Tokens: index across ALL Arc launchpads
-│   ├── tokens/[address]/     # Token detail: chart, swap, socials, contract
-│   ├── token/[address]/      # Bonding token detail (Arcodex launches)
-│   ├── launch/page.tsx       # Launch: bonding type, socials, fee
-│   ├── bridge/page.tsx       # Bridge: USDC cross-chain (LI.FI)
-│   ├── pool/page.tsx         # Pool: LP positions + all pools
-│   ├── profile/page.tsx      # Profile: claim creator fees, holdings
-│   ├── docs/page.tsx         # Docs hub
-│   ├── layout.tsx            # Root layout + fonts
-│   ├── providers.tsx         # Privy auth provider
-│   └── globals.css           # Design tokens (dark, cyan accent)
-├── components/
-│   ├── Navbar.tsx            # Top bar with 6 menus
-│   ├── TokenCard.tsx         # Token grid card
-│   ├── BondingBadge.tsx      # Standard / Early Buy badge
-│   ├── SortDropdown.tsx      # Reusable sort/filter dropdown
-│   ├── TradingViewChart.tsx  # TradingView lightweight-charts
-│   └── CopyButton.tsx        # Copy-to-clipboard
-├── lib/
-│   ├── mockData.ts           # Bonding tokens + trades + holdings
-│   ├── arcTokens.ts          # Cross-launchpad token index
-│   ├── types.ts              # TypeScript types
-│   └── useAuth.ts            # Privy auth hook (demo fallback)
-├── contracts/
-│   └── ArcodexBondingCurve.sol  # Bonding curve + 80/20 fee split
-└── docs/
-    ├── whitepaper.md
-    ├── structure.md
-    └── contracts.md
-\`\`\`
-
-## Tech Stack
-
-| Layer | Choice |
-|-------|--------|
-| Framework | Next.js 16 (App Router, Turbopack) |
-| Language | TypeScript |
-| Styling | Tailwind CSS v4 + CSS variables |
-| Charts | TradingView lightweight-charts v5 |
-| Auth | Privy (wallet + X login, env-gated) |
-| Icons | Phosphor Icons |
-| Package manager | pnpm 11 |
-| Deploy | Vercel |
-
-## Design System
-
-- Theme: Dark, crypto-native. Off-black background, cyan accent (#22d3ee)
-- Typography: Geist Sans + Geist Mono
-- Currency: USDC everywhere (Arc native asset)
-- Fee model: 1% fixed, 80% creator / 20% platform
-- Bonding types: Standard, Early Buy
-
-## Data Flow
-
-- Static/mock data powers the UI today
-- Real integration: replace mock arrays with indexer/API responses; wire swap to ArcodexBondingCurve.buy/sell; wire profile claim to claimCreatorFees
-- Privy: set NEXT_PUBLIC_PRIVY_APP_ID to enable real wallet + X login`,
-  },
   contracts: {
     title: "Smart Contracts",
     body: `# Arcodex Smart Contracts
@@ -243,7 +174,6 @@ export default function DocsPage() {
           {(
             [
               ["whitepaper", "Whitepaper"],
-              ["structure", "Structure"],
               ["contracts", "Smart Contracts"],
             ] as const
           ).map(([key, label]) => (

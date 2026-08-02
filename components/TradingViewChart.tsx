@@ -1,15 +1,17 @@
 "use client";
 
-// TradingView lightweight-charts v5 area chart.
+// TradingView lightweight-charts v5 area chart with Price/MCAP metric toggle.
 // Interactive: crosshair, time scale, price scale.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createChart, ColorType, AreaSeries, IChartApi, UTCTimestamp } from "lightweight-charts";
 
 export interface Candle {
   time: number; // unix seconds
   value: number;
 }
+
+export type ChartMetric = "price" | "mcap";
 
 export function genCandles(seed: number, points = 96): Candle[] {
   const out: Candle[] = [];
@@ -26,17 +28,28 @@ export function genCandles(seed: number, points = 96): Candle[] {
   return out;
 }
 
+export function candlesToMcap(data: Candle[], supply: number): Candle[] {
+  return data.map((d) => ({ time: d.time, value: d.value * supply }));
+}
+
 export default function TradingViewChart({
-  data,
+  priceData,
+  mcapData,
   height = 260,
   accent = "#22d3ee",
+  showMetricToggle = false,
 }: {
-  data: Candle[];
+  priceData: Candle[];
+  mcapData?: Candle[];
   height?: number;
   accent?: string;
+  showMetricToggle?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const [metric, setMetric] = useState<ChartMetric>("price");
+
+  const data = metric === "mcap" && mcapData ? mcapData : priceData;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -90,5 +103,27 @@ export default function TradingViewChart({
     };
   }, [data, height, accent]);
 
-  return <div ref={containerRef} className="w-full" style={{ height }} />;
+  return (
+    <div>
+      {showMetricToggle && (
+        <div className="mb-2 flex gap-1 rounded-md border border-[var(--border)] p-0.5">
+          {(["price", "mcap"] as ChartMetric[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMetric(m)}
+              className={`rounded px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition ${
+                metric === m
+                  ? "bg-[var(--accent)] font-semibold text-[#05070b]"
+                  : "text-[var(--text-2)] hover:text-[var(--text)]"
+              }`}
+            >
+              {m === "price" ? "Price" : "MCAP"}
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={containerRef} className="w-full" style={{ height }} />
+    </div>
+  );
 }
+

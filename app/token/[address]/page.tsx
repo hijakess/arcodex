@@ -6,7 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import BondingBadge from "@/components/BondingBadge";
-import TradingViewChart, { genCandles } from "@/components/TradingViewChart";
+import TradingViewChart, { genCandles, candlesToMcap } from "@/components/TradingViewChart";
 import { tokens, recentTrades, formatUsdc, formatNum, timeAgo, shortAddr } from "@/lib/mockData";
 import { XLogo, ArrowDown, ArrowUp, Wallet } from "@phosphor-icons/react";
 
@@ -24,6 +24,10 @@ export default function TokenPage() {
   const chartData = useMemo(
     () => genCandles(params.address.length + Math.round((token?.priceUsdc ?? 1) * 1000), 120),
     [params.address, token]
+  );
+  const mcapData = useMemo(
+    () => candlesToMcap(chartData, (token?.mcapUsdc ?? 1) / (token?.priceUsdc ?? 1) || 1_000_000),
+    [chartData, token]
   );
 
   if (!token) {
@@ -101,7 +105,13 @@ export default function TokenPage() {
                 </span>
               </div>
               <div className="mt-2 flex-1">
-                <TradingViewChart data={chartData} accent={up ? "#22d3ee" : "#fb7185"} height={220} />
+                <TradingViewChart
+                  priceData={chartData}
+                  mcapData={mcapData}
+                  accent={up ? "#22d3ee" : "#fb7185"}
+                  height={220}
+                  showMetricToggle
+                />
               </div>
             </div>
 
