@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import SortDropdown from "@/components/SortDropdown";
-import { arcTokens, LAUNCHPADS } from "@/lib/arcTokens";
+import { arcTokens, ArcToken } from "@/lib/arcTokens";
+import { fetchRadarTokens } from "@/lib/radar";
 import { formatUsdc, formatNum } from "@/lib/mockData";
-import { ArrowsLeftRight, CaretDown, Check, MagnifyingGlass } from "@phosphor-icons/react";
+import { ArrowsLeftRight, CaretDown, Check, MagnifyingGlass, CircleNotch } from "@phosphor-icons/react";
 
 const SORT_OPTIONS = [
   { value: "mcap", label: "Market cap" },
@@ -21,9 +22,36 @@ export default function TokensPage() {
   const [sort, setSort] = useState("mcap");
   const [launchpad, setLaunchpad] = useState("all");
   const [padOpen, setPadOpen] = useState(false);
+  const [liveTokens, setLiveTokens] = useState<ArcToken[] | null>(null);
+  const [liveError, setLiveError] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRadarTokens(500)
+      .then((tokens) => {
+        if (cancelled) return;
+        setLiveTokens(tokens);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLiveError(true);
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const tokens = liveTokens ?? arcTokens;
+  const launchpads = useMemo(
+    () => ["all", ...Array.from(new Set(tokens.map((t) => t.launchpad)))],
+    [tokens]
+  );
 
   const filtered = useMemo(() => {
-    let list = arcTokens.filter(
+    let list = tokens.filter(
       (t) =>
         t.symbol.toLowerCase().includes(query.toLowerCase()) ||
         t.name.toLowerCase().includes(query.toLowerCase())
@@ -48,7 +76,7 @@ export default function TokensPage() {
         list = [...list].sort((a, b) => b.mcapUsdc - a.mcapUsdc);
     }
     return list;
-  }, [query, sort, launchpad]);
+  }, [query, sort, launchpad, tokens]);
 
   const activePad = launchpad === "all" ? "All launchpads" : launchpad;
 
@@ -57,9 +85,25 @@ export default function TokensPage() {
       <Navbar />
       <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         <div className="flex flex-col gap-1">
-          <h1 className="font-mono text-3xl font-semibold tracking-tight">Tokens</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-mono text-3xl font-semibold tracking-tight">Tokens</h1>
+            {loading ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 font-mono text-[10px] text-[var(--text-2)]">
+                <CircleNotch size={11} className="animate-spin" />
+                loading live feed…
+              </span>
+            ) : liveError ? (
+              <span className="rounded-full border border-amber-300/30 bg-amber-400/5 px-2.5 py-1 font-mono text-[10px] text-amber-200/90">
+                live feed offline · showing cached list
+              </span>
+            ) : (
+              <span className="rounded-full border border-[var(--pos)]/40 bg-[var(--pos)]/10 px-2.5 py-1 font-mono text-[10px] text-[var(--pos)]">
+                ● live · {tokens.length} tokens
+              </span>
+            )}
+          </div>
           <p className="max-w-2xl font-mono text-xs text-[var(--text-2)]">
-            Every token launched across launchpads on Arc, in one place. Buy or
+            Every token on Arc from the RadarDex feed, in one place. Buy or
             swap any of them directly on Arcodex with USDC.
           </p>
         </div>
@@ -94,7 +138,7 @@ export default function TokensPage() {
               </button>
               {padOpen && (
                 <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1 shadow-xl shadow-black/50">
-                  {["all", ...LAUNCHPADS].map((pad) => {
+                  {launchpads.map((pad) => {
                     const selected = launchpad === pad;
                     return (
                       <button
@@ -131,7 +175,7 @@ export default function TokensPage() {
                 <th className="px-4 py-3 text-right font-medium">24h</th>
                 <th className="px-4 py-3 text-right font-medium">Market cap</th>
                 <th className="px-4 py-3 text-right font-medium">Liquidity</th>
-                <th className="px-4 py-3 text-right font-medium">Holders</th>
+                <th className="px-4 py-3 text-right font-medium">Traders 24h</th>
                 <th className="px-4 py-3 text-right font-medium">Swap</th>
               </tr>
             </thead>

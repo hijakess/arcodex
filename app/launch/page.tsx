@@ -20,7 +20,13 @@ export default function LaunchPage() {
   const [creatorWallet, setCreatorWallet] = useState("");
   const [xHandle, setXHandle] = useState("");
   const [initialBuy, setInitialBuy] = useState("");
+  const [whitelist, setWhitelist] = useState("");
   const [submitted, setSubmitted] = useState(false);
+
+  const whitelistCount = whitelist
+    .split(/[\n,]+/)
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0).length;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,6 +50,12 @@ export default function LaunchPage() {
             bonding curve. All prices in {CHAIN.nativeSymbol}. Connect the creator
             wallet to sign the deployment transaction.
           </p>
+          {bonding === "early-buy" && whitelistCount > 0 && (
+            <p className="mt-3 rounded-md border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-2.5 font-mono text-[11px] text-[var(--accent)]">
+              Early Buy whitelist: {whitelistCount}{" "}
+              {whitelistCount === 1 ? "address" : "addresses"} restricted.
+            </p>
+          )}
           <button
             onClick={() => setSubmitted(false)}
             className="mt-8 rounded-md border border-[var(--border)] px-5 py-2 font-mono text-xs text-[var(--text-2)] transition hover:border-[var(--accent)]/50 hover:text-[var(--text)]"
@@ -99,6 +111,40 @@ export default function LaunchPage() {
               ))}
             </div>
           </div>
+
+          {/* Early buy whitelist */}
+          {bonding === "early-buy" && (
+            <div className="rounded-lg border border-[var(--accent)]/40 bg-[var(--surface)] p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-mono text-xs uppercase tracking-wider text-[var(--accent)]">
+                    Whitelist addresses
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-[var(--text-2)]/80">
+                    Only these wallets can buy during the Early Buy phase. One
+                    address per line (or comma-separated).
+                  </p>
+                </div>
+                {whitelistCount > 0 && (
+                  <span className="shrink-0 rounded-full border border-[var(--accent)]/40 bg-[var(--accent-dim)] px-2.5 py-1 font-mono text-[11px] text-[var(--accent)]">
+                    {whitelistCount} {whitelistCount === 1 ? "address" : "addresses"}
+                  </span>
+                )}
+              </div>
+              <textarea
+                value={whitelist}
+                onChange={(e) => setWhitelist(e.target.value)}
+                rows={4}
+                placeholder={"0x1234...abcd\n0x5678...ef01\n0x9abc...def2"}
+                className="mt-4 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-xs text-[var(--text)] placeholder:text-[var(--text-2)]/40 focus:border-[var(--accent)]/60 focus:outline-none"
+              />
+              {whitelistCount === 0 && (
+                <p className="mt-2 font-mono text-[10px] text-amber-300/80">
+                  If left empty, Early Buy opens to everyone.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Token details */}
           <div className="grid gap-5 sm:grid-cols-2">

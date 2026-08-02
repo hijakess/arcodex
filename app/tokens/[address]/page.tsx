@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import TradingViewChart, { genCandles, candlesToMcap } from "@/components/TradingViewChart";
 import CopyButton from "@/components/CopyButton";
-import { arcTokens } from "@/lib/arcTokens";
+import { arcTokens, ArcToken } from "@/lib/arcTokens";
+import { fetchRadarToken } from "@/lib/radar";
 import { formatUsdc, formatNum } from "@/lib/mockData";
 import {
   XLogo,
@@ -18,13 +19,39 @@ import {
   ArrowUp,
   ArrowDown,
   LinkSimple,
+  CircleNotch,
 } from "@phosphor-icons/react";
 
 export default function TokenDetailPage() {
   const params = useParams<{ address: string }>();
-  const token = arcTokens.find((t) => t.address === params.address);
+  const [token, setToken] = useState<ArcToken | undefined>(() =>
+    arcTokens.find((t) => t.address === params.address)
+  );
+  const [loading, setLoading] = useState(!token);
+  const [notFound, setNotFound] = useState(false);
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (token) return;
+    fetchRadarToken(params.address)
+      .then((t) => {
+        if (cancelled) return;
+        if (t) setToken(t);
+        else setNotFound(true);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setNotFound(true);
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.address]);
 
   const chartData = useMemo(
     () => genCandles((token?.address ?? "0x").length + Math.round((token?.priceUsdc ?? 0.001) * 1000) || 7, 120),
@@ -35,7 +62,21 @@ export default function TokenDetailPage() {
     [chartData, token]
   );
 
-  if (!token) {
+  if (loading) {
+    return (
+      <main className="min-h-screen">
+        <Navbar />
+        <section className="mx-auto flex max-w-3xl flex-col items-center px-4 py-24 text-center sm:px-6">
+          <CircleNotch size={28} className="animate-spin text-[var(--accent)]" />
+          <p className="mt-4 font-mono text-sm text-[var(--text-2)]">
+            Loading token from live feed…
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!token || notFound) {
     return (
       <main className="min-h-screen">
         <Navbar />
@@ -114,7 +155,7 @@ export default function TokenDetailPage() {
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Market cap" value={formatUsdc(token.mcapUsdc)} />
               <Stat label="Liquidity" value={formatUsdc(token.liquidityUsdc)} />
-              <Stat label="Holders" value={formatNum(token.holders)} />
+              <Stat label="Traders 24h" value={formatNum(token.holders)} />
               <Stat label="Volume 24h" value={formatUsdc(token.volume24h)} />
             </div>
 
