@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ArcodexPool} from "./ArcodexPool.sol";
 
 /**
  * @title ArcodexBondingCurve
@@ -16,16 +17,18 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  * - Buy/sell prices follow a linear bonding curve priced in USDC (the native
  *   asset of Arc). Curve starts at `startingPrice` and rises linearly with
  *   supply until `graduationThreshold` is reached.
- * - At graduation (100% of the bonding curve sold) the remaining supply and
- *   USDC are migrated to a full AMM pool, and the token trades freely.
- * - Creator fees are fixed at 1% of every trade: 80% to the creator, 20% to
- *   the platform. Fees accrue on-chain and are claimable by each party.
+ * - Bonding types: "standard" (open from block one) and "early-buy"
+ *   (whitelisted wallets get first access before public trading).
+ * - At graduation (100% of the bonding curve sold) a full AMM pool is
+ *   deployed (ArcodexPool) and the remaining supply + USDC migrate to it.
+ * - Fees are fixed at 1.5% of every trade: 80% to the creator, 20% to the
+ *   platform. Fees accrue on-chain and are claimable by each party.
  *
  * Fee split (per user request)
  * ----------------------------
- *   fee = 1% of trade notional
- *   creator share = 80% of fee  (0.8%)
- *   platform share = 20% of fee (0.2%)
+ *   fee = 1.5% of trade notional
+ *   creator share = 80% of fee  (1.2%)
+ *   platform share = 20% of fee (0.3%)
  *
  * @custom:security-contact https://arcodex.app
  */
@@ -34,7 +37,7 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /* ============ Constants ============ */
 
-    uint256 public constant FEE_BPS = 100; // 1.00% total fee
+    uint256 public constant FEE_BPS = 150; // 1.50% total fee
     uint256 public constant CREATOR_SHARE_BPS = 8000; // 80% of fee
     uint256 public constant PLATFORM_SHARE_BPS = 2000; // 20% of fee
     uint256 public constant BPS = 10_000;
@@ -48,6 +51,12 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /// @notice Total number of tokens launched.
     uint256 public tokenCount;
+
+    /// @notice Bonding type of a launched token.
+    enum BondingType {
+        Standard,
+        EarlyBuy
+    }
 
     /// @notice Metadata for a launched token.
     struct TokenInfo {
@@ -67,11 +76,16 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
         uint256 totalCollected; // total USDC in the curve
         uint256 creatorClaimable;
         uint256 platformClaimable;
+        BondingType bondingType;
         bool graduated;
+        address pool; // ArcodexPool once graduated
     }
 
     mapping(address => TokenInfo) public tokens; // token address -> info
     address[] public tokenList;
+
+    /// @notice Whitelisted early buyers per token (Early Buy bonding only).
+    mapping(address => mapping(address => bool)) public earlyBuyWhitelist;
 
     /// @notice USDC balance held per token curve (curve liquidity).
     mapping(address => uint256) public curveBalance;
@@ -84,7 +98,8 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
         string name,
         string symbol,
         uint256 supply,
-        uint256 startingPrice
+        uint256 startingPrice,
+        BondingType bondingType
     );
     event Buy(address indexed token, address indexed buyer, uint256 usdcIn, uint256 tokensOut);
     event Sell(address indexed token, address indexed seller, uint256 tokensIn, uint256 usdcOut);
@@ -109,7 +124,9 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /**
      * @notice Launch a new token on a bonding curve.
-     * @dev Deploys a BondingCurveToken, registers metadata, and mints the full
+     * @param bondingType 0 = Standard (open to all), 1 = Early Buy (whitelist).
+     * @param whitelist Addresses allowed to buy during the Early Buy phase.
+     * @dev Deploys a BondingCurveToken, registers metadata, mints the full
      *      supply to this contract. Creator pays `startingPrice * supply` USDC
      *      for the initial pool seeding (optional: 0 to start empty).
      */
@@ -124,11 +141,16 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
         uint256 supply,
         uint256 startingPrice, // USDC per token (6 decimals)
         uint256 graduationThreshold,
-        address creatorFeeWallet
+        address creatorFeeWallet,
+        BondingType bondingType,
+        address[] calldata whitelist
     ) external returns (address token) {
         require(supply > 0, "supply=0");
         require(startingPrice > 0, "price=0");
         require(graduationThreshold > 0 && graduationThreshold <= supply, "bad threshold");
+        if (bondingType == BondingType.EarlyBuy) {
+            require(whitelist.length > 0, "empty whitelist");
+        }
 
         // Deploy the token contract
         BondingCurveToken t = new BondingCurveToken(name, symbol, address(this));
@@ -152,26 +174,42 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
             totalCollected: 0,
             creatorClaimable: 0,
             platformClaimable: 0,
-            graduated: false
+            bondingType: bondingType,
+            graduated: false,
+            pool: address(0)
         });
         tokenList.push(token);
         tokenCount++;
 
-        emit TokenLaunched(token, msg.sender, name, symbol, supply, startingPrice);
+        if (bondingType == BondingType.EarlyBuy) {
+            for (uint256 i = 0; i < whitelist.length; i++) {
+                require(whitelist[i] != address(0), "zero addr");
+                earlyBuyWhitelist[token][whitelist[i]] = true;
+            }
+        }
+
+        emit TokenLaunched(token, msg.sender, name, symbol, supply, startingPrice, bondingType);
     }
 
     /* ============ Trading ============ */
 
     /**
      * @notice Buy tokens from the bonding curve with USDC.
-     * @dev Price increases linearly with supply. 1% fee on the USDC notional,
+     * @dev Price increases linearly with supply. 1.5% fee on the USDC notional,
      *      split 80/20 creator/platform. USDC fee stays in this contract and is
-     *      claimable; the rest funds the curve.
+     *      claimable; the rest funds the curve. Early Buy tokens require the
+     *      buyer to be whitelisted until the whitelist window ends.
      */
     function buy(address token, uint256 usdcIn) external nonReentrant {
         TokenInfo storage info = tokens[token];
         require(info.token != address(0), "unknown token");
         require(!info.graduated, "graduated");
+
+        // Early Buy gate: only whitelisted wallets until 100% of the
+        // whitelist phase is sold (configurable: first half of the curve).
+        if (info.bondingType == BondingType.EarlyBuy) {
+            require(earlyBuyWhitelist[token][msg.sender], "not whitelisted");
+        }
 
         usdc.safeTransferFrom(msg.sender, address(this), usdcIn);
 
@@ -194,7 +232,7 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /**
      * @notice Sell tokens back to the bonding curve for USDC.
-     * @dev Price decreases linearly with supply. 1% fee applied on the USDC out.
+     * @dev Price decreases linearly with supply. 1.5% fee applied on the USDC out.
      */
     function sell(address token, uint256 tokensIn) external nonReentrant {
         TokenInfo storage info = tokens[token];
@@ -259,18 +297,29 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /**
      * @notice Migrate a fully-sold curve to a real AMM pool.
-     * @dev Called by anyone once the curve is 100% sold. Remaining token supply
-     *      and curve USDC are sent to the new pool address.
+     * @dev Called by anyone once the curve is 100% sold. Deploys an
+     *      ArcodexPool seeded with the remaining token supply and the curve
+     *      USDC, then routes all further trading through the pool.
      */
-    function graduate(address token, address pool) external nonReentrant {
+    function graduate(address token) external nonReentrant returns (address pool) {
         TokenInfo storage info = tokens[token];
         require(info.token != address(0), "unknown token");
         require(!info.graduated, "already graduated");
         require(info.sold >= info.graduationThreshold, "not fully sold");
 
-        info.graduated = true;
         uint256 remainingSupply = info.supply - info.sold;
         uint256 curveUsdc = curveBalance[token];
+
+        ArcodexPool p = new ArcodexPool(
+            token,
+            address(usdc),
+            info.creatorFeeWallet,
+            platformTreasury
+        );
+        pool = address(p);
+
+        info.graduated = true;
+        info.pool = pool;
         curveBalance[token] = 0;
 
         if (remainingSupply > 0) {
@@ -301,17 +350,13 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
      *      linear approximation for predictable pricing.
      */
     function _priceToTokens(address token, uint256 usdcIn) internal view returns (uint256) {
-        TokenInfo storage info = tokens[token];
         uint256 price = _currentPrice(token);
-        uint256 tokens = (usdcIn * 1e18) / price;
-        return tokens;
+        return (usdcIn * 1e18) / price;
     }
 
     function _tokensToPrice(address token, uint256 tokensIn) internal view returns (uint256) {
-        TokenInfo storage info = tokens[token];
         uint256 price = _currentPrice(token);
-        uint256 usdc = (tokensIn * price) / 1e18;
-        return usdc;
+        return (tokensIn * price) / 1e18;
     }
 
     /// @notice Current marginal price of a token (USDC per 1e18 token).
@@ -319,7 +364,7 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
         TokenInfo storage info = tokens[token];
         uint256 progress = (info.sold * 1e18) / info.graduationThreshold;
         // price scales linearly from startingPrice to 4x startingPrice at 100%
-        return info.startingPrice * (1e18 + progress * 3 / 1e18) / 1e18;
+        return (info.startingPrice * (1e18 + (progress * 3) / 1e18)) / 1e18;
     }
 
     /* ============ Getters ============ */
@@ -338,6 +383,10 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
             all[i] = tokens[tokenList[i]];
         }
         return all;
+    }
+
+    function isWhitelisted(address token, address wallet) external view returns (bool) {
+        return earlyBuyWhitelist[token][wallet];
     }
 }
 

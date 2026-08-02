@@ -1,26 +1,34 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import TradingViewChart, { genCandles, candlesToMcap } from "@/components/TradingViewChart";
+import TradingViewChart, { Candle, genCandles, candlesToMcap } from "@/components/TradingViewChart";
 import CopyButton from "@/components/CopyButton";
 import { arcTokens, ArcToken } from "@/lib/arcTokens";
-import { fetchRadarToken } from "@/lib/radar";
-import { formatUsdc, formatNum } from "@/lib/mockData";
+import {
+  fetchRadarToken,
+  fetchRadarChart,
+  fetchRadarSwaps,
+  CHART_TFS,
+  RadarSwap,
+} from "@/lib/radar";
+import { formatUsdc, formatNum, timeAgo, shortAddr } from "@/lib/mockData";
 import {
   XLogo,
   Globe,
   TelegramLogo,
   DiscordLogo,
   ArrowsLeftRight,
-  ArrowUp,
   ArrowDown,
-  LinkSimple,
   CircleNotch,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "@phosphor-icons/react";
+
+type Tf = keyof typeof CHART_TFS;
 
 export default function TokenDetailPage() {
   const params = useParams<{ address: string }>();
@@ -31,7 +39,12 @@ export default function TokenDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
+  const [tf, setTf] = useState<Tf>("1D");
+  const [chartCandles, setChartCandles] = useState<Candle[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [swaps, setSwaps] = useState<RadarSwap[]>([]);
 
+  // Load token (static fallback first, then live detail)
   useEffect(() => {
     let cancelled = false;
     if (token) return;
@@ -53,13 +66,52 @@ export default function TokenDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.address]);
 
-  const chartData = useMemo(
-    () => genCandles((token?.address ?? "0x").length + Math.round((token?.priceUsdc ?? 0.001) * 1000) || 7, 120),
-    [token]
+  // Load real candlesticks for the active timeframe
+  const loadChart = useCallback(
+    (address: string, t: Tf) => {
+      setChartLoading(true);
+      fetchRadarChart(address, CHART_TFS[t], 1000)
+        .then((cs) => {
+          if (!cs || cs.length === 0) return;
+          setChartCandles(cs.map((c) => ({ time: c.time, value: c.close })));
+        })
+        .catch(() => {})
+        .finally(() => setChartLoading(false));
+    },
+    []
   );
+
+  useEffect(() => {
+    if (!token) return;
+    loadChart(token.address, tf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, tf]);
+
+  // Load recent swaps
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetchRadarSwaps(token.address, 25).then((s) => {
+      if (!cancelled && Array.isArray(s)) setSwaps(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const chartData: Candle[] = useMemo(() => {
+    if (chartCandles.length > 0) return chartCandles;
+    return genCandles(
+      (token?.address ?? "0x").length + Math.round((token?.priceUsdc ?? 0.001) * 1000) || 7,
+      120
+    );
+  }, [chartCandles, token]);
+
+  // Real supply: mcap / price, so mcap chart ends exactly at displayed mcap
+  const supply = token && token.priceUsdc > 0 ? token.mcapUsdc / token.priceUsdc : 1_000_000;
   const mcapData = useMemo(
-    () => candlesToMcap(chartData, (token?.mcapUsdc ?? 1) / (token?.priceUsdc ?? 1) || 1_000_000),
-    [chartData, token]
+    () => candlesToMcap(chartData, supply || 1_000_000),
+    [chartData, supply]
   );
 
   if (loading) {
@@ -131,12 +183,26 @@ export default function TokenDetailPage() {
                   </p>
                   <p className="font-mono text-[11px] text-[var(--text-2)]">
                     {token.symbol}/USDC · 24h volume {formatUsdc(token.volume24h)}
+                    {chartLoading && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-[var(--accent)]">
+                        <CircleNotch size={10} className="animate-spin" />
+                        live
+                      </span>
+                    )}
                   </p>
                 </div>
-                <div className="flex gap-1 rounded-md border border-[var(--border)] p-0.5">
-                  {["1H", "1D", "1W", "1M"].map((tf) => (
-                    <button key={tf} className={`rounded px-2.5 py-1 font-mono text-[10px] transition ${tf === "1D" ? "bg-[var(--accent)] text-[#05070b] font-semibold" : "text-[var(--text-2)] hover:text-[var(--text)]"}`}>
-                      {tf}
+                <div className="flex items-center gap-1 rounded-md border border-[var(--border)] p-0.5">
+                  {(Object.keys(CHART_TFS) as Tf[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTf(t)}
+                      className={`rounded px-2.5 py-1 font-mono text-[10px] transition ${
+                        tf === t
+                          ? "bg-[var(--accent)] font-semibold text-[#05070b]"
+                          : "text-[var(--text-2)] hover:text-[var(--text)]"
+                      }`}
+                    >
+                      {t}
                     </button>
                   ))}
                 </div>
@@ -319,8 +385,8 @@ export default function TokenDetailPage() {
                   <span className="text-[var(--text)]">1 {token.symbol} = {formatUsdc(token.priceUsdc, 5)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Fee (1%)</span>
-                  <span className="text-[var(--text)]">0.8% creator · 0.2% platform</span>
+                  <span>Fee (1.5%)</span>
+                  <span className="text-[var(--text)]">1.2% creator · 0.3% platform</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Liquidity</span>
@@ -336,6 +402,102 @@ export default function TokenDetailPage() {
                 Powered by Arcodex · Native USDC on Arc
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Recent trades */}
+        <div className="mt-8 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-2)]">
+                Recent trades
+              </p>
+              <p className="mt-0.5 font-mono text-[11px] text-[var(--text-2)]/70">
+                Live from the RadarDex feed · {swaps.length} latest swaps
+              </p>
+            </div>
+            <a
+              href={`https://arc.blockscout.com/token/${token.address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[11px] text-[var(--accent)] transition hover:underline"
+            >
+              View on explorer →
+            </a>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse font-mono text-xs">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-left text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                  <th className="px-5 py-2.5 font-medium">Side</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Amount (USDC)</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Price</th>
+                  <th className="px-4 py-2.5 font-medium">Trader</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Time</th>
+                  <th className="px-5 py-2.5 text-right font-medium">TX</th>
+                </tr>
+              </thead>
+              <tbody>
+                {swaps.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-[var(--text-2)]">
+                      No recent swaps yet.
+                    </td>
+                  </tr>
+                )}
+                {swaps.map((s, i) => {
+                  const buy = s.side === "buy";
+                  return (
+                    <tr
+                      key={`${s.txHash}-${i}`}
+                      className={`${i > 0 ? "border-t border-[var(--border)]" : ""} transition hover:bg-white/[0.03]`}
+                    >
+                      <td className="px-5 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold ${
+                            buy
+                              ? "bg-[var(--pos)]/10 text-[var(--pos)]"
+                              : "bg-[var(--neg)]/10 text-[var(--neg)]"
+                          }`}
+                        >
+                          {buy ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+                          {buy ? "BUY" : "SELL"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-[var(--text)]">
+                        {formatUsdc(s.usdc)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-[var(--text)]">
+                        {formatUsdc(s.price, 6)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <a
+                          href={`https://arc.blockscout.com/address/${s.trader}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[var(--text-2)] transition hover:text-[var(--accent)]"
+                        >
+                          {shortAddr(s.trader)}
+                        </a>
+                      </td>
+                      <td className="px-4 py-3 text-right text-[var(--text-2)]">
+                        {timeAgo(s.time * 1000)}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <a
+                          href={`https://arc.blockscout.com/tx/${s.txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[var(--accent)] transition hover:underline"
+                        >
+                          view <ArrowUpRight size={11} />
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       </section>

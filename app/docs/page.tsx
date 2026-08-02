@@ -12,7 +12,7 @@ const DOCS: Record<string, { title: string; body: string }> = {
 
 ## Abstract
 
-Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset**. Every token launches on a bonding curve with a fixed **1% trading fee**, split **80% to the creator and 20% to the platform**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
+Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset**. Every token launches on a bonding curve with a fixed **1.5% trading fee**, split **80% to the creator and 20% to the platform**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
 
 ## 1. Problem
 
@@ -24,7 +24,7 @@ Arcodex provides:
 
 - One-click token launch with two bonding types (Standard, Early Buy)
 - Native USDC pricing everywhere - no ETH/WETH conversions
-- Fixed 1% fee with transparent 80/20 creator/platform split
+- Fixed 1.5% fee with transparent 80/20 creator/platform split
 - Unified token index across all Arc launchpads with instant swap
 - Bridge for moving USDC onto Arc
 - Liquidity pools for post-graduation trading
@@ -46,12 +46,12 @@ Tokens launch on a linear bonding curve: price = startingPrice * (1 + sold / gra
 
 ## 4. Fee Model
 
-Fixed **1.00%** fee on every trade (buy and sell):
+Fixed **1.50%** fee on every trade (buy and sell):
 
 | Party | Share | Effective rate |
 |-------|-------|----------------|
-| Creator | 80% | 0.80% |
-| Platform | 20% | 0.20% |
+| Creator | 80% | 1.20% |
+| Platform | 20% | 0.30% |
 
 Fees accrue on-chain in USDC. Creators claim from their profile; the platform claims to a treasury wallet.
 
@@ -62,7 +62,7 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) -> Arcodex API/Indexer -> 
 ## 6. Token Lifecycle
 
 1. Launch - creator deploys token with metadata (name, symbol, description, website, socials)
-2. Bonding - traders buy/sell against the curve in USDC; 1% fee accrues
+2. Bonding - traders buy/sell against the curve in USDC; 1.5% fee accrues
 3. Graduation - at 100% curve sold, liquidity migrates to a full AMM pool
 4. Trading - post-graduation, token trades freely on the AMM with the same fee split
 5. Claim - creator claims 80% of fees; platform claims 20%
@@ -79,7 +79,7 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) -> Arcodex API/Indexer -> 
 
 | Item | Value |
 |------|-------|
-| Trading fee | 1.00% fixed |
+| Trading fee | 1.50% fixed |
 | Creator share | 80% |
 | Platform share | 20% |
 | Price currency | USDC (native) |
@@ -100,19 +100,29 @@ Arcodex is a protocol for launching and trading community tokens. Tokens launche
     title: "Smart Contracts",
     body: `# Arcodex Smart Contracts
 
+## Live Deployment (Arc mainnet, chainId 5042)
+
+| Contract | Address |
+|----------|---------|
+| ArcodexBondingCurve | \`0x21638Fe1D64dAcC598779Ee47f0B207Cb48fE4bB\` |
+| USDC (quote) | \`0x3600000000000000000000000000000000000000\` |
+| ArcodexPool | deployed per-token at graduation |
+
+Deploy TX: \`0x77d8f56656cf3b3733d438be40330567296fb936cd5311bb2815e89b406514f8\`
+
 ## Contract: ArcodexBondingCurve
 
 Source: contracts/ArcodexBondingCurve.sol
 
-The factory + exchange contract for Arcodex. Every token launch creates a BondingCurveToken (minimal ERC20). Buy/sell prices follow a linear bonding curve priced in USDC.
+The factory + exchange contract for Arcodex. Every token launch creates a BondingCurveToken (minimal ERC20). Buy/sell prices follow a linear bonding curve priced in USDC. Supports Standard and Early Buy (whitelist) bonding.
 
 ## Fee Model
 
-\`\`\`
-FEE_BPS = 100             # 1.00% total
-CREATOR_SHARE_BPS = 8000  # 80% of fee -> creator (0.80%)
-PLATFORM_SHARE_BPS = 2000 # 20% of fee -> platform (0.20%)
-\`\`\`
+\\\`\\\`\\\`
+FEE_BPS = 150             # 1.50% total
+CREATOR_SHARE_BPS = 8000  # 80% of fee -> creator (1.20%)
+PLATFORM_SHARE_BPS = 2000 # 20% of fee -> platform (0.30%)
+\\\`\\\`\\\`
 
 Applied on every buy and sell. Accrues on-chain per token; claimable separately.
 
@@ -120,20 +130,27 @@ Applied on every buy and sell. Accrues on-chain per token; claimable separately.
 
 | Function | Description |
 |----------|-------------|
-| launchToken(...) | Deploys token, registers metadata + socials, seeds curve |
-| buy(token, usdcIn) | Buy curve tokens with USDC, 1% fee split 80/20 |
-| sell(token, tokensIn) | Sell curve tokens for USDC, 1% fee split 80/20 |
+| launchToken(...) | Deploys token, registers metadata + socials + whitelist, seeds curve |
+| buy(token, usdcIn) | Buy curve tokens with USDC, 1.5% fee split 80/20 |
+| sell(token, tokensIn) | Sell curve tokens for USDC, 1.5% fee split 80/20 |
 | claimCreatorFees(token) | Creator claims accrued 80% share |
 | claimPlatformFees(token) | Owner claims accrued 20% share |
-| graduate(token, pool) | Migrate fully-sold curve to AMM pool |
+| graduate(token) | Deploys ArcodexPool, migrates fully-sold curve to AMM pool |
 | priceToTokens(token, usdcIn) | Quote: USDC -> tokens |
 | tokensToPrice(token, tokensIn) | Quote: tokens -> USDC |
+| isWhitelisted(token, wallet) | Check Early Buy whitelist status |
+
+## ArcodexPool (AMM)
+
+Source: contracts/ArcodexPool.sol
+
+Constant-product pool (token <-> USDC) deployed at graduation. Same 1.5% fee split 80/20, charged in the output asset. Supports swapUsdcIn / swapTokenIn, addLiquidity / removeLiquidity with LP tokens, and claimable creator/platform fees.
 
 ## Curve Formula
 
-\`\`\`
+\\\`\\\`\\\`
 price = startingPrice * (1 + sold / graduationThreshold)
-\`\`\`
+\\\`\\\`\\\`
 
 Linear from startingPrice up to 4x at 100% graduation. Liquidity fully backed by USDC held in the contract.
 

@@ -8,6 +8,34 @@ import { ArcToken } from "./arcTokens";
 const RADAR_API = "https://web-production-efe27.up.railway.app";
 const FALLBACK_IMAGE = "/tokens/arcl.svg";
 
+// Chart timeframes: Arcodex tab → RadarDex API tf (seconds per candle)
+export const CHART_TFS: Record<string, number> = {
+  "1H": 60,
+  "1D": 900,
+  "1W": 3600,
+  "1M": 21600,
+};
+
+export interface RadarCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  vol: number;
+}
+
+export interface RadarSwap {
+  side: "buy" | "sell";
+  version: string;
+  usdc: number;
+  token: number;
+  price: number;
+  trader: string;
+  txHash: string;
+  time: number;
+}
+
 interface RadarTokenRaw {
   address: string;
   symbol: string;
@@ -94,5 +122,36 @@ export async function fetchRadarToken(address: string): Promise<ArcToken | null>
     return mapToken(t, t.bestPool ?? undefined);
   } catch {
     return null;
+  }
+}
+
+/** Fetch real candlesticks for a token. tf is seconds per candle. */
+export async function fetchRadarChart(
+  address: string,
+  tf: number,
+  limit = 1000
+): Promise<RadarCandle[]> {
+  try {
+    const r = await fetch(`${RADAR_API}/token/${address}/chart?tf=${tf}&limit=${limit}`);
+    if (!r.ok) throw new Error(`chart ${r.status}`);
+    const d = await r.json();
+    return Array.isArray(d?.candles) ? d.candles : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch the most recent swaps for a token. */
+export async function fetchRadarSwaps(
+  address: string,
+  limit = 30
+): Promise<RadarSwap[]> {
+  try {
+    const r = await fetch(`${RADAR_API}/token/${address}/swaps?limit=${limit}`);
+    if (!r.ok) throw new Error(`swaps ${r.status}`);
+    const d = await r.json();
+    return Array.isArray(d?.swaps) ? d.swaps : [];
+  } catch {
+    return [];
   }
 }
