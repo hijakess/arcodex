@@ -38,28 +38,40 @@ export const LAUNCH_PLATFORM_SHARE_BPS = 2000n;
 export const LAUNCH_HOLDER_SHARE_BPS = 1000n;
 
 // ---- ABIs (minimal, matching deployed contracts) ----
+// NOTE: every ABI MUST go through parseAbi() — viem throws
+// "Cannot use 'in' operator to search for 'name'" on raw string arrays.
 
-export const ERC20_ABI = [
+export const ERC20_ABI = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
-] as const;
+]);
 
-export const FEE_ROUTER_ABI = [
+export const FEE_ROUTER_ABI = parseAbi([
   "function swapExactInput(address router, address tokenIn, address tokenOut, uint24 poolFee, uint256 amountIn, uint256 amountOutMinimum) returns (uint256)",
   "function feeBps() view returns (uint256)",
   "function creatorClaimable(address) view returns (uint256)",
   "function platformClaimable(address) view returns (uint256)",
-] as const;
+]);
 
-export const QUOTER_ABI = [
+export const QUOTER_ABI = parseAbi([
   "function quoteExactInputSingle(address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96) view returns (uint256)",
-] as const;
+]);
+
+// Some RadarDex quoters only accept the struct form.
+export const QUOTER_ABI_STRUCT = parseAbi([
+  "function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96) params) view returns (uint256)",
+]);
 
 // ---- Clients ----
 
+/**
+ * Public client for reads/simulates. Browser NEVER hits the public RPC
+ * directly (Railway rate-limits per-IP, arcanine rejects foreign Origins);
+ * every call goes through the server-side /api/rpc proxy instead.
+ */
 export function publicClient() {
-  return createPublicClient({ chain: ARC_CHAIN, transport: http() });
+  return createPublicClient({ chain: ARC_CHAIN, transport: http("/api/rpc") });
 }
 
 /** Wallet client from an injected provider (window.ethereum). */
@@ -88,9 +100,7 @@ export async function quoteSwap(
     // some quoters need the struct form
     const q = await client.readContract({
       address: QUOTER,
-      abi: [
-        "function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96) params) view returns (uint256)",
-      ],
+      abi: QUOTER_ABI_STRUCT,
       functionName: "quoteExactInputSingle",
       args: [{ tokenIn, tokenOut, amountIn, fee: poolFee, sqrtPriceLimitX96: 0n }],
     });
