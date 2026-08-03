@@ -31,6 +31,8 @@ import {
   publicClient,
   claimHolderRewards,
   getPendingHolderRewards,
+  getArcodexTokenInfo,
+  type ArcodexTokenInfo,
   isArcodexToken,
   ARCODEX_FEE_ROUTER,
   SWAP_ROUTER,
@@ -52,6 +54,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Coins,
+  Rocket,
+  LockSimple,
 } from "@phosphor-icons/react";
 
 type Tf = keyof typeof CHART_TFS;
@@ -88,6 +92,9 @@ export default function TokenDetailPage() {
   const [pendingRewards, setPendingRewards] = useState<bigint | null>(null);
   const [claimStatus, setClaimStatus] = useState<"idle" | "claiming" | "success" | "error">("idle");
   const [claimError, setClaimError] = useState("");
+  // Bonding-curve state for Arcodex-launched tokens (sold / threshold /
+  // graduated / locked pool) — drives the graduation progress bar.
+  const [curveInfo, setCurveInfo] = useState<ArcodexTokenInfo | null>(null);
 
   // Real wallet (EIP-1193 injected provider)
   const {
@@ -153,6 +160,23 @@ export default function TokenDetailPage() {
       cancelled = true;
     };
   }, [token]);
+
+  // Fetch the curve state so the graduation bar updates after every buy/sell
+  useEffect(() => {
+    if (!token) {
+      setCurveInfo(null);
+      return;
+    }
+    let cancelled = false;
+    getArcodexTokenInfo(token.address as Address)
+      .then((info) => {
+        if (!cancelled) setCurveInfo(info);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token, lastTx]);
 
   useEffect(() => {
     if (!token || !account || !isArcodex) {
@@ -509,6 +533,83 @@ export default function TokenDetailPage() {
               <Stat label="Traders 24h" value={formatNum(token.holders)} />
               <Stat label="Volume 24h" value={formatUsdc(token.volume24h)} />
             </div>
+
+            {/* Graduation progress (Arcodex-launched tokens only) */}
+            {curveInfo && (
+              <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="flex items-center gap-2">
+                  <Rocket size={15} className="text-[var(--accent)]" />
+                  <p className="font-mono text-xs uppercase tracking-wider text-[var(--accent)]">
+                    Graduation
+                  </p>
+                  {curveInfo.graduated && (
+                    <span className="ml-auto flex items-center gap-1 rounded border border-[var(--pos)]/40 bg-[var(--pos)]/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-[var(--pos)]">
+                      <LockSimple size={10} />
+                      Liquidity locked
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-3">
+                  <div className="flex items-center justify-between font-mono text-[11px] text-[var(--text-2)]">
+                    <span>Bonding progress</span>
+                    <span className="font-semibold text-[var(--text)]">
+                      {curveInfo.graduationThreshold > 0n
+                        ? (
+                            Number(
+                              (curveInfo.sold * 10000n) /
+                                curveInfo.graduationThreshold
+                            ) / 100
+                          ).toFixed(1)
+                        : "0.0"}
+                      %
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        curveInfo.graduated
+                          ? "bg-[var(--pos)]"
+                          : "bg-[var(--accent)]"
+                      }`}
+                      style={{
+                        width: `${
+                          curveInfo.graduationThreshold > 0n
+                            ? Math.min(
+                                100,
+                                Number(
+                                  (curveInfo.sold * 10000n) /
+                                    curveInfo.graduationThreshold
+                                ) / 100
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {curveInfo.graduated ? (
+                  <p className="mt-3 rounded-md border border-[var(--pos)]/40 bg-[var(--pos)]/10 px-3 py-2 font-mono text-[11px] leading-relaxed text-[var(--pos)]">
+                    Curve graduated — liquidity is locked on the Arcodex DEX.
+                    Pool:{" "}
+                    <a
+                      href={`https://arc.blockscout.com/address/${curveInfo.pool}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      {shortAddr(curveInfo.pool)}
+                    </a>
+                  </p>
+                ) : (
+                  <p className="mt-3 font-mono text-[11px] leading-relaxed text-[var(--text-2)]/80">
+                    When the curve reaches 100%, liquidity locks automatically on
+                    the Arcodex DEX — the token graduates to a full AMM pool.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Holder dividends (Arcodex-launched tokens only) */}
             {isArcodex && (
