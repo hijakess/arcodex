@@ -16,15 +16,19 @@ import {
 
 export const ARC_CHAIN_ID = 5042;
 export const ARC_CHAIN_HEX = "0x13b2";
-// Currently online Arc public RPC (verified: eth_chainId -> 0x13b2).
+// Currently online Arc public RPCs. Railway is primary (verified broadcast in
+// real swaps); arcanine is listed second so wallets auto-fallback when Railway
+// rate-limits the user's IP (per-IP limits are the classic "network error" on
+// tx broadcast).
 export const ARC_CHAIN_RPC = "https://fortest-production-9a201.up.railway.app";
+export const ARC_CHAIN_RPC_ALT = "https://arcanine.lol/api/rpc";
 export const ARC_CHAIN_EXPLORER = "https://arc.blockscout.com";
 
 export const ARC_CHAIN_PARAMS = {
   chainId: ARC_CHAIN_HEX,
   chainName: "Arc",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: [ARC_CHAIN_RPC],
+  rpcUrls: [ARC_CHAIN_RPC, ARC_CHAIN_RPC_ALT],
   blockExplorerUrls: [ARC_CHAIN_EXPLORER],
 } as const;
 

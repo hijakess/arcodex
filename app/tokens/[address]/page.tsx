@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -154,39 +154,6 @@ export default function TokenDetailPage() {
     };
   }, [token]);
 
-  // Opsi A — GMGN-style auto-approve: as soon as a wallet is connected on Arc,
-  // pre-approve MaxUint256 for USDC + this token so every subsequent swap is a
-  // single wallet signature. Only runs once per page mount; if the user rejects,
-  // handleSwap falls back to requesting approval on demand.
-  const [autoApproving, setAutoApproving] = useState(false);
-  const autoApproveDone = useRef(false);
-  useEffect(() => {
-    if (!account || !token || isWrongChain || autoApproveDone.current) return;
-    autoApproveDone.current = true;
-    let cancelled = false;
-    (async () => {
-      setAutoApproving(true);
-      try {
-        for (const t of [USDC, token.address as Address]) {
-          try {
-            const allow = await getAllowance(account as Address, t);
-            if (allow < 2n ** 200n) {
-              await approveToken(provider!, account as Address, t);
-            }
-          } catch {
-            /* one rejection shouldn't block the other token */
-          }
-        }
-      } finally {
-        if (!cancelled) setAutoApproving(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account, token, isWrongChain]);
-
   useEffect(() => {
     if (!token || !account || !isArcodex) {
       setPendingRewards(null);
@@ -332,7 +299,18 @@ export default function TokenDetailPage() {
       setLastTx(txHash);
       setSwapStatus("success");
     } catch (e: any) {
-      setSwapError(e?.shortMessage || e?.message || "Swap failed.");
+      // 4001 = user rejected the wallet popup — that's not an error to fear
+      if (e?.code === 4001) {
+        setSwapError("Transaction rejected in your wallet.");
+      } else {
+        const msg = e?.shortMessage || e?.message || "Swap failed.";
+        const isNet = /fetch|network|timeout|abort|ECONN|socket|quota|rate limit/i.test(msg);
+        setSwapError(
+          isNet
+            ? `Network error talking to the Arc RPC — check your connection and tap Buy again. (${msg.slice(0, 100)})`
+            : msg
+        );
+      }
       setSwapStatus("error");
     }
   }
@@ -845,12 +823,6 @@ export default function TokenDetailPage() {
                     view tx
                   </a>
                 </div>
-              )}
-              {autoApproving && (
-                <p className="mt-3 flex items-center gap-2 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-2 font-mono text-[11px] text-[var(--accent)]">
-                  <CircleNotch size={11} className="animate-spin" />
-                  Auto-approving USDC + {token.symbol} (one-time)…
-                </p>
               )}
 
               <button
