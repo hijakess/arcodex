@@ -69,11 +69,15 @@ async function rpcCall(method: string, params: unknown[], id: number, retries = 
         return j.result;
       } catch (e: any) {
         const msg = String(e?.message || e);
-        if (attempt < retries) {
-          await sleep(900 * (attempt + 1));
-          continue;
+        // Only transport-level failures are retryable. Contract reverts and
+        // other real RPC answers must propagate so the client sees them.
+        if (/timeout|fetch|network|abort|quota|rate limit|429|599/i.test(msg)) {
+          if (attempt < retries) {
+            await sleep(900 * (attempt + 1));
+            continue;
+          }
         }
-        break;
+        throw e;
       }
     }
   }
