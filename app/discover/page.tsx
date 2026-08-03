@@ -5,11 +5,7 @@ import Navbar from "@/components/Navbar";
 import TokenCard from "@/components/TokenCard";
 import SortDropdown from "@/components/SortDropdown";
 import { BondingType, Token } from "@/lib/types";
-import {
-  getArcodexTokens,
-  placeholderImage,
-  type ArcodexTokenInfo,
-} from "@/lib/swap";
+import { placeholderImage } from "@/lib/swap";
 import { CircleNotch } from "@phosphor-icons/react";
 
 const SORT_OPTIONS = [
@@ -24,15 +20,35 @@ const FILTER_OPTIONS = [
   { value: "early-buy", label: "Early Buy" },
 ];
 
-function toToken(info: ArcodexTokenInfo, index: number, total: number): Token {
-  const price =
-    Number(info.startingPrice) / 1e6 *
-    (1 + Number(info.sold) / Math.max(1, Number(info.graduationThreshold)));
+interface ApiTokenInfo {
+  token: string;
+  creator: string;
+  creatorFeeWallet: string;
+  name: string;
+  symbol: string;
+  website: string;
+  twitter: string;
+  telegram: string;
+  discord: string;
+  supply: string;
+  startingPrice: string;
+  graduationThreshold: string;
+  sold: string;
+  totalCollected: string;
+  creatorClaimable: string;
+  platformClaimable: string;
+  bondingType: number;
+  graduated: boolean;
+  pool: string;
+}
+
+function toToken(info: ApiTokenInfo, index: number, total: number): Token {
+  const startingPrice = Number(info.startingPrice) / 1e6;
+  const threshold = Math.max(1, Number(info.graduationThreshold) / 1e18);
+  const sold = Number(info.sold) / 1e18;
+  const price = startingPrice * (1 + sold / threshold);
   const supply = Number(info.supply) / 1e18;
-  const progress = Math.min(
-    100,
-    Math.max(0, (Number(info.sold) / Math.max(1, Number(info.graduationThreshold))) * 100)
-  );
+  const progress = Math.min(100, Math.max(0, (sold / threshold) * 100));
   return {
     address: info.token,
     symbol: info.symbol,
@@ -71,8 +87,14 @@ export default function DiscoverPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    getArcodexTokens()
-      .then((infos) => {
+    fetch("/api/arcodex-tokens", { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (data?.error) throw new Error(data.error);
+        const infos: ApiTokenInfo[] = Array.isArray(data?.tokens) ? data.tokens : [];
         setList(infos.map((info, i) => toToken(info, i, infos.length)));
         setLoading(false);
       })
