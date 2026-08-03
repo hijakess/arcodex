@@ -71,14 +71,14 @@ export default function Navbar() {
           <Link href="/" className="flex items-center gap-2.5">
             <Image
               src="/logo.png"
-              alt="Arcline logo"
+              alt="Arcodex logo"
               width={30}
               height={30}
               className="logo-glow rounded-[6px]"
               priority
             />
-            <span className="font-mono text-sm font-semibold tracking-tight">
-              arcodex<span className="text-[var(--accent)]">.app</span>
+            <span className="font-brand text-lg font-bold leading-none tracking-tight">
+              Arcode<span className="text-[var(--accent)]">x</span>
             </span>
           </Link>
 

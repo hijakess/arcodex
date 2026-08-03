@@ -30,6 +30,11 @@ kbd {
   font-family: var(--font-geist-mono), ui-monospace, "JetBrains Mono", monospace;
 }
 
+/* brand wordmark (Space Grotesk) */
+.font-brand {
+  font-family: var(--font-brand), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+
 /* thin scrollbars */
 * {
   scrollbar-width: thin;
