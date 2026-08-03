@@ -48,7 +48,7 @@ export default function LaunchPage() {
   const [initialBuy, setInitialBuy] = useState("");
   const [supply, setSupply] = useState("1000000000"); // 1B default
   const [startingPrice, setStartingPrice] = useState("0.000002"); // ~$200 → 0.00000200 USDC
-  const [graduationUsdc, setGraduationUsdc] = useState("3500"); // graduate at $3,500 liquidity
+  const [graduationUsdc, setGraduationUsdc] = useState("4000"); // Flap.sh model: 80% of 1B supply sold on curve → 2.5 × p0 × 0.8B = $4,000; remaining 20% + USDC → locked pool
   const [whitelist, setWhitelist] = useState("");
 
   const [launchStatus, setLaunchStatus] = useState<LaunchStatus>("idle");
@@ -410,9 +410,10 @@ export default function LaunchPage() {
               Bonding curve parameters
             </p>
             <p className="mt-1 font-mono text-[11px] text-[var(--text-2)]/80">
-              Linear curve: price starts at the starting price and rises 4× as the
-              curve bonds. When collected liquidity hits the graduation target, the
-              curve graduates and the pool locks on the Arcodex DEX.
+              Flap.sh model: the curve bonds 80% of supply (price starts at the
+              starting price and rises 4×). At graduation the remaining 20% of
+              tokens is added to the Arcodex DEX pool together with all USDC
+              collected by the curve, and the liquidity locks permanently.
             </p>
             <div className="mt-4 grid gap-5 sm:grid-cols-3">
               <label className="block">
@@ -455,7 +456,8 @@ export default function LaunchPage() {
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
                 />
                 <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
-                  Pool locks on the Arcodex DEX at this amount.
+                  80% of supply sells on the curve at this target — the remaining
+                  20% + this USDC is added to the pool and locked.
                 </p>
               </label>
             </div>
@@ -487,6 +489,17 @@ export default function LaunchPage() {
                 </p>
                 <p className="mt-0.5 font-mono text-sm font-semibold text-[var(--text)]">
                   {formatUsdc(finalPriceUsdc, 8)}
+                </p>
+              </div>
+              <div className="rounded-md border border-[var(--pos)]/30 bg-[var(--pos)]/5 px-3 py-2 sm:col-span-3">
+                <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--pos)]">
+                  At graduation — liquidity locked 🔒
+                </p>
+                <p className="mt-1 font-mono text-[11px] leading-relaxed text-[var(--text)]">
+                  {Math.round(supplyTokens - thresholdTokens).toLocaleString()} tokens (
+                  {(100 - pctSold).toFixed(1)}% of supply) +{" "}
+                  {formatUsdc(Math.min(targetUsdc, maxCollectedUsdc))} USDC collected by
+                  the curve → added to the Arcodex DEX pool and locked permanently.
                 </p>
               </div>
               {p0Usdc > 0 && !targetReachable && (
