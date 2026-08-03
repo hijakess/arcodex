@@ -1,16 +1,142 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import TokenCard from "@/components/TokenCard";
 import BondingBadge from "@/components/BondingBadge";
-import { tokens, CHAIN, formatUsdc } from "@/lib/mockData";
-import { RocketLaunch, Coins, ArrowRight } from "@phosphor-icons/react";
+import { CHAIN } from "@/lib/mockData";
+import { Token } from "@/lib/types";
+import { ArcToken } from "@/lib/arcTokens";
+import { fetchRadarTokens } from "@/lib/radar";
+import { placeholderImage } from "@/lib/swap";
+import { RocketLaunch, Coins, ArrowRight, CircleNotch } from "@phosphor-icons/react";
+
+// RadarDex tokens are live AMM tokens (already graduated) — map to the
+// launchpad Token shape used by TokenCard.
+function arcToToken(t: ArcToken): Token {
+  return {
+    address: t.address,
+    symbol: t.symbol,
+    name: t.name,
+    description: "",
+    image: t.image,
+    bondingType: "standard",
+    priceUsdc: t.priceUsdc,
+    mcapUsdc: t.mcapUsdc,
+    supply: t.priceUsdc > 0 ? t.mcapUsdc / t.priceUsdc : 0,
+    change24h: t.change24h,
+    volume24h: t.volume24h,
+    holders: t.holders,
+    bondingProgress: 100, // has a live pool → fully graduated
+    trades24h: 0,
+    createdAt: Date.now() / 1000 - t.ageH * 3600,
+    creator: { wallet: "", feeBps: 0, claimed: 0, claimable: 0 },
+    tags: [],
+  };
+}
+
+interface ChainTokenInfo {
+  token: string;
+  name: string;
+  symbol: string;
+  website: string;
+  twitter: string;
+  telegram: string;
+  discord: string;
+  supply: string;
+  startingPrice: string;
+  graduationThreshold: string;
+  sold: string;
+  totalCollected: string;
+  creatorClaimable: string;
+  platformClaimable: string;
+  bondingType: number;
+  graduated: boolean;
+  pool: string;
+}
+
+// Arcodex bonding-curve token (from the on-chain API route) → Token.
+function chainToToken(info: ChainTokenInfo, index: number, total: number): Token {
+  const startingPrice = Number(info.startingPrice) / 1e6;
+  const threshold = Math.max(1, Number(info.graduationThreshold) / 1e18);
+  const sold = Number(info.sold) / 1e18;
+  const price = startingPrice * (1 + sold / threshold);
+  const supply = Number(info.supply) / 1e18;
+  const progress = Math.min(100, Math.max(0, (sold / threshold) * 100));
+  return {
+    address: info.token,
+    symbol: info.symbol,
+    name: info.name,
+    description: "",
+    image: placeholderImage(info.symbol, info.token),
+    bondingType: info.bondingType === 1 ? "early-buy" : "standard",
+    priceUsdc: price,
+    mcapUsdc: price * supply,
+    supply,
+    change24h: 0,
+    volume24h: Number(info.totalCollected) / 1e6,
+    holders: 0,
+    bondingProgress: progress,
+    trades24h: 0,
+    createdAt: total - index,
+    creator: {
+      wallet: "",
+      feeBps: 70,
+      claimed: 0,
+      claimable: Number(info.creatorClaimable) / 1e6,
+    },
+    tags: [],
+  };
+}
 
 export default function HomePage() {
-  const trending = [...tokens].sort((a, b) => b.volume24h - a.volume24h).slice(0, 5);
-  const newest = [...tokens].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+  const [trending, setTrending] = useState<Token[]>([]);
+  const [newest, setNewest] = useState<Token[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Trending: top RadarDex tokens by 24h volume (live, no mock)
+    const radar = fetchRadarTokens(500)
+      .then((list) => {
+        if (cancelled) return;
+        setTrending(
+          [...list]
+            .sort((a, b) => b.volume24h - a.volume24h)
+            .slice(0, 5)
+            .map(arcToToken)
+        );
+      })
+      .catch(() => {});
+
+    // Newest: Arcodex bonding-curve tokens from the on-chain API (no mock)
+    const chain = fetch("/api/arcodex-tokens")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`API ${r.status}`))))
+      .then((data) => {
+        if (cancelled || data?.error) return;
+        const infos: ChainTokenInfo[] = Array.isArray(data?.tokens) ? data.tokens : [];
+        // API returns newest-first already
+        setNewest(infos.slice(0, 5).map((info, i) => chainToToken(info, i, infos.length)));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e?.message || "Failed to load live tokens.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    Promise.allSettled([radar, chain]).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <main className="min-h-screen">
@@ -79,11 +205,21 @@ export default function HomePage() {
             View all →
           </Link>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
-          {trending.map((t, i) => (
-            <TokenCard key={t.address} token={t} index={i} />
-          ))}
-        </div>
+        {loading && trending.length === 0 ? (
+          <div className="mt-5 flex h-40 items-center justify-center rounded-lg border border-[var(--border)]">
+            <CircleNotch size={20} className="animate-spin text-[var(--accent)]" />
+          </div>
+        ) : trending.length > 0 ? (
+          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+            {trending.map((t, i) => (
+              <TokenCard key={t.address} token={t} index={i} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-5 font-mono text-xs text-[var(--text-2)]">
+            No live tokens yet — check back soon.
+          </p>
+        )}
       </section>
 
       {/* Bonding types */}
@@ -130,11 +266,21 @@ export default function HomePage() {
             View all →
           </Link>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
-          {newest.map((t, i) => (
-            <TokenCard key={t.address} token={t} index={i} />
-          ))}
-        </div>
+        {loading && newest.length === 0 ? (
+          <div className="mt-5 flex h-40 items-center justify-center rounded-lg border border-[var(--border)]">
+            <CircleNotch size={20} className="animate-spin text-[var(--accent)]" />
+          </div>
+        ) : newest.length > 0 ? (
+          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+            {newest.map((t, i) => (
+              <TokenCard key={t.address} token={t} index={i} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-5 font-mono text-xs text-[var(--text-2)]">
+            No tokens launched on Arcodex yet — be the first!
+          </p>
+        )}
       </section>
 
       {/* Stats strip */}
@@ -142,9 +288,9 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-px px-4 py-10 sm:grid-cols-4 sm:px-6">
           {[
             ["Native currency", CHAIN.nativeSymbol],
-            ["Creator fee", "0.5-2%"],
+            ["Launch fee", "1%"],
+            ["Swap fee", "1.5%"],
             ["Graduation", "AMM at 100%"],
-            ["Login", "Wallet or X"],
           ].map(([k, v]) => (
             <div key={k} className="px-4 py-3">
               <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
