@@ -293,9 +293,6 @@ function FeeBreakdown() {
     { pct: 20, label: "Platform", sub: "0.20% · treasury", color: "bg-blue-500", text: "text-blue-300" },
     { pct: 10, label: "Holders", sub: "0.10% · USDC dividends", color: "bg-amber-400", text: "text-amber-300" },
   ];
-  const swapSegments = [
-    { pct: 100, label: "Platform", sub: "1.50% · treasury", color: "bg-blue-500", text: "text-blue-300" },
-  ];
 
   return (
     <div className="mt-8 space-y-6">
@@ -325,45 +322,8 @@ function FeeBreakdown() {
         </div>
 
         {/* legend */}
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {launchSegments.map((s) => (
-            <div key={s.label} className="flex items-start gap-2 rounded-md border border-[var(--border)]/60 bg-[var(--bg)] p-3">
-              <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-sm ${s.color}`} />
-              <div>
-                <p className={`font-mono text-sm font-semibold ${s.text}`}>{s.label}</p>
-                <p className="font-mono text-[11px] text-[var(--text-2)]">{s.sub}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Swap existing */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <h2 className="font-mono text-lg font-semibold text-[var(--text)]">Swap Existing Tokens</h2>
-            <p className="font-mono text-[11px] text-[var(--text-2)]">Atomic fee router · tokens with live DEX liquidity</p>
-          </div>
-          <span className="rounded-md border border-blue-400/40 bg-blue-500/10 px-3 py-1 font-mono text-sm font-semibold text-blue-300">
-            1.50% fee
-          </span>
-        </div>
-
-        <div className="mt-4 flex h-10 w-full overflow-hidden rounded-md border border-[var(--border)]">
-          {swapSegments.map((s) => (
-            <div
-              key={s.label}
-              className={`${s.color} flex items-center justify-center font-mono text-xs font-bold text-black/80`}
-              style={{ width: `${s.pct}%` }}
-            >
-              {s.pct}% · {s.label}
-            </div>
-          ))}
-        </div>
-
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-1">
-          {swapSegments.map((s) => (
+          {launchSegments.map((s) => (
             <div key={s.label} className="flex items-start gap-2 rounded-md border border-[var(--border)]/60 bg-[var(--bg)] p-3">
               <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-sm ${s.color}`} />
               <div>
