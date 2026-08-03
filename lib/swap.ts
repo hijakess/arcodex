@@ -140,7 +140,18 @@ export async function executeSwap(
     args: [SWAP_ROUTER, tokenIn, tokenOut, poolFee, amountIn, amountOutMin],
     account,
   });
-  const txHash = await client.writeContract(request);
+  // Verified on mainnet: this router actually burns ~160k gas, but Railway's
+  // eth_estimateGas returns ~15.2M (~100x over) and with viem's default 44 gwei
+  // tip that demands 0.67 USDC of gas — small wallets then fail with
+  // "insufficient funds for gas". Fix: cap tip at 1 gwei (base is 20 gwei) and
+  // set a generous fixed gas limit; unused gas is refunded, so the real cost
+  // stays ~0.003 USDC.
+  const txHash = await client.writeContract({
+    ...request,
+    maxFeePerGas: 22n * 10n ** 9n,
+    maxPriorityFeePerGas: 1n * 10n ** 9n,
+    gas: 500_000n,
+  } as any);
   return { txHash, amountOut: 0n };
 }
 
