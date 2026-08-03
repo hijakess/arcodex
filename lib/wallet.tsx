@@ -16,11 +16,13 @@ import {
 
 export const ARC_CHAIN_ID = 5042;
 export const ARC_CHAIN_HEX = "0x13b2";
-// RPC priority for the wallet "Add Chain" button (benchmarked live:
-// arcanine ~0.2-0.9s, Railway ~5.5-7s and intermittently "upstream rate
-// limited" — that per-IP limiting is what caused users' "network error" on
-// tx broadcast). arcanine is primary; Railway stays as fallback.
-export const ARC_CHAIN_RPC = "https://arcanine.lol/api/rpc";
+// RPC for the wallet "Add Chain" button. arcanine is the fastest public RPC
+// BUT rejects bare wallet requests (it needs special headers → wallets show
+// "URL RPC tidak terdeteksi"). Our own /api/rpc proxy accepts any request,
+// relays to arcanine+Railway in parallel (fast, no per-IP rate limit) and now
+// also supports eth_sendRawTransaction — so it's the correct wallet RPC.
+// Railway stays as a fallback in case the proxy is unreachable.
+export const ARC_CHAIN_RPC = "https://arc-launchpad-seven.vercel.app/api/rpc";
 export const ARC_CHAIN_RPC_ALT = "https://fortest-production-9a201.up.railway.app";
 export const ARC_CHAIN_EXPLORER = "https://arc.blockscout.com";
 

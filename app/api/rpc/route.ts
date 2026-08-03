@@ -17,6 +17,8 @@ const FETCH_TIMEOUT_MS = 5000;
 const TOTAL_DEADLINE_MS = 8500;
 
 // Only forward safe read/estimate methods — never expose an open proxy.
+// eth_sendRawTransaction is included so the proxy can serve as the wallet's
+// RPC endpoint (it only relays user-signed txs — no arbitrary methods).
 const ALLOWED = new Set([
   "eth_call",
   "eth_estimateGas",
@@ -31,6 +33,7 @@ const ALLOWED = new Set([
   "eth_getTransactionReceipt",
   "eth_getTransactionByHash",
   "eth_getLogs",
+  "eth_sendRawTransaction",
   "net_version",
 ]);
 
@@ -50,14 +53,69 @@ async function throttle() {
   lastRpc = Date.now();
 }
 
+type RpcOut = { ok: boolean; result?: unknown; err?: unknown };
+
+const isTransport = (e: unknown) =>
+  /timeout|fetch|network|abort|429|599|rate limit|too many/i.test(
+    String(e instanceof Error ? e.message : e)
+  );
+
+async function postOnce(
+  url: string,
+  method: string,
+  params: unknown[],
+  id: number
+): Promise<RpcOut> {
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0",
+        Origin: "https://arcanine.lol",
+        Referer: "https://arcanine.lol/",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", method, params, id }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    const j = await r.json();
+    if (j.error) return { ok: false, err: new Error(String(j.error.message || "rpc error")) };
+    return { ok: true, result: j.result };
+  } catch (e) {
+    return { ok: false, err: e };
+  }
+}
+
 async function rpcCall(method: string, params: unknown[], id: number) {
   const urls = [RPC, RPC_FALLBACK];
   const start = Date.now();
 
-  // Fire both endpoints in parallel and take the FIRST valid answer — do NOT
-  // wait for the slowest runner. The public arcanine RPC is fast but
-  // intermittently "rate limited" on heavy eth_call simulates; Railway is
-  // slower but consistent. First-success keeps latency at the fastest node.
+  // eth_sendRawTransaction is a broadcast — relay to ONE endpoint at a time
+  // (parallel broadcast would race the two RPCs and confuse the wallet).
+  if (method === "eth_sendRawTransaction") {
+    let lastErr: unknown = null;
+    for (const url of urls) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (Date.now() - start > TOTAL_DEADLINE_MS - 1000) break;
+        await throttle();
+        const out = await postOnce(url, method, params, id);
+        if (out.ok) return out.result;
+        lastErr = out.err;
+        if (out.ok === false && isTransport(out.err) && attempt === 0) {
+          await sleep(300 * (attempt + 1));
+          continue;
+        }
+        break; // non-transport failure → try the next endpoint
+      }
+    }
+    throw lastErr ?? new Error("broadcast failed on all endpoints");
+  }
+
+  // Reads/simulates: fire both endpoints in parallel and take the FIRST valid
+  // answer — do NOT wait for the slowest runner. arcanine is fast but
+  // intermittently rate-limited on heavy eth_call simulates; Railway is slower
+  // but consistent. First-success keeps latency at the fastest node.
   const runners = urls.map((url, u) => {
     return (async () => {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -65,39 +123,13 @@ async function rpcCall(method: string, params: unknown[], id: number) {
           return { ok: false as const, err: new Error("RPC deadline exceeded") };
         }
         await throttle();
-        try {
-          const r = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0",
-              Origin: "https://arcanine.lol",
-              Referer: "https://arcanine.lol/",
-            },
-            body: JSON.stringify({ jsonrpc: "2.0", method, params, id: id + u * 100 + attempt }),
-            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-            cache: "no-store",
-          });
-          const j = await r.json();
-          if (j.error) {
-            const msg = String(j.error.message || "");
-            // Contract reverts are real answers — pass through immediately.
-            // Only transport-ish failures (timeout/rate-limit/429/599) retry.
-            if (/timeout|rate limit|429|599|fetch|too many/i.test(msg) && attempt === 0) {
-              await sleep(300 * (attempt + 1));
-              continue;
-            }
-            return { ok: false as const, err: new Error(msg) };
-          }
-          return { ok: true as const, result: j.result };
-        } catch (e: any) {
-          const msg = String(e?.message || e);
-          if (/timeout|fetch|network|abort|429|599|rate limit|too many/i.test(msg) && attempt === 0) {
-            await sleep(300 * (attempt + 1));
-            continue;
-          }
-          return { ok: false as const, err: e };
+        const out = await postOnce(url, method, params, id + u * 100 + attempt);
+        if (out.ok) return out;
+        if (isTransport(out.err) && attempt === 0) {
+          await sleep(300 * (attempt + 1));
+          continue;
         }
+        return out;
       }
       return { ok: false as const, err: new Error("endpoint failed") };
     })();
