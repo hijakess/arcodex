@@ -42,11 +42,11 @@ interface TokenRaw {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// arcanine is fast; keep a small throttle + fall back to Railway if it trips
-// its per-project quota ("project ID exceeded quota").
+// arcanine is fast; keep a tiny throttle only to stay under its per-project
+// quota ("project ID exceeded quota"), then fall back to Railway.
 let lastRpc = 0;
 async function throttle() {
-  const wait = Math.max(0, 1500 - (Date.now() - lastRpc));
+  const wait = Math.max(0, 200 - (Date.now() - lastRpc));
   if (wait > 0) await sleep(wait);
   lastRpc = Date.now();
 }
@@ -145,37 +145,58 @@ function decodeTokens(raw: string): TokenRaw {
 let cacheData: { json: unknown; at: number } | null = null;
 const CACHE_TTL = 60_000; // 60s
 
+/** Run async work with a concurrency cap (gentle on the RPC quota). */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, i: number) => Promise<R>
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const i = idx++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 export async function GET() {
   if (cacheData && Date.now() - cacheData.at < CACHE_TTL) {
     return NextResponse.json(cacheData.json, {
-      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
     });
   }
   try {
     const count = Number(BigInt(await rpcCall("eth_call", [{ to: CURVE, data: SELECTOR.tokenCount }, "latest"], 1)));
 
-    const addresses: string[] = [];
-    for (let i = 0; i < count; i++) {
-      const raw = await rpcCall("eth_call", [{ to: CURVE, data: SELECTOR.tokenList(BigInt(i)) }, "latest"], 100 + i);
-      addresses.push("0x" + raw.slice(-40));
-    }
+    // tokenList(i) for all i — run in parallel (4 at a time)
+    const rawList = await mapLimit(
+      Array.from({ length: count }, (_, i) => i),
+      4,
+      (i) => rpcCall("eth_call", [{ to: CURVE, data: SELECTOR.tokenList(BigInt(i)) }, "latest"], 100 + i)
+    );
+    const addresses = rawList.map((raw) => "0x" + raw.slice(-40));
 
-    const tokens: TokenRaw[] = [];
-    for (const a of addresses) {
-      const raw = await rpcCall("eth_call", [{ to: CURVE, data: SELECTOR.tokens(a) }, "latest"], 200 + tokens.length);
-      tokens.push(decodeTokens(raw));
-    }
+    // tokens(address) for all addresses — parallel, 4 at a time
+    const raws = await mapLimit(addresses, 4, (a, i) =>
+      rpcCall("eth_call", [{ to: CURVE, data: SELECTOR.tokens(a) }, "latest"], 200 + i)
+    );
+    const tokens = raws.map(decodeTokens);
 
     const body = { count, tokens: tokens.reverse() };
     cacheData = { json: body, at: Date.now() };
     return NextResponse.json(body, {
-      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
     });
   } catch (e: any) {
     // serve stale cache if the RPC is down
     if (cacheData) {
       return NextResponse.json(cacheData.json, {
-        headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+        headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
       });
     }
     return NextResponse.json({ error: String(e?.message || e) }, { status: 502 });

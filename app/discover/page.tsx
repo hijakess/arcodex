@@ -87,7 +87,21 @@ export default function DiscoverPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    fetch("/api/arcodex-tokens", { cache: "no-store" })
+    // Serve cached list instantly on revisits; the API route itself is
+    // CDN-cached (s-maxage=60) so this is only for instant paint.
+    try {
+      const cached = sessionStorage.getItem("arcodex:discover:v1");
+      if (cached) {
+        const { at, tokens } = JSON.parse(cached);
+        if (Array.isArray(tokens) && Date.now() - at < 90_000) {
+          setList(tokens.map((info: ApiTokenInfo, i: number) => toToken(info, i, tokens.length)));
+          setLoading(false);
+        }
+      }
+    } catch {
+      /* storage unavailable — fetch fresh */
+    }
+    fetch("/api/arcodex-tokens")
       .then((r) => {
         if (!r.ok) throw new Error(`API ${r.status}`);
         return r.json();
@@ -97,6 +111,14 @@ export default function DiscoverPage() {
         const infos: ApiTokenInfo[] = Array.isArray(data?.tokens) ? data.tokens : [];
         setList(infos.map((info, i) => toToken(info, i, infos.length)));
         setLoading(false);
+        try {
+          sessionStorage.setItem(
+            "arcodex:discover:v1",
+            JSON.stringify({ at: Date.now(), tokens: infos })
+          );
+        } catch {
+          /* ignore quota errors */
+        }
       })
       .catch((e) => {
         setError(e?.message || "Failed to load tokens from the chain.");

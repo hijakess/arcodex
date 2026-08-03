@@ -28,11 +28,33 @@ export default function TokensPage() {
 
   useEffect(() => {
     let cancelled = false;
+    // Serve a fresh-enough cached list instantly (sessionStorage), then
+    // refresh in the background so revisits are instant.
+    try {
+      const cached = sessionStorage.getItem("arcodex:tokens:v1");
+      if (cached) {
+        const { at, list } = JSON.parse(cached);
+        if (list && Date.now() - at < 90_000) {
+          setLiveTokens(list);
+          setLoading(false);
+        }
+      }
+    } catch {
+      /* storage unavailable — fetch fresh */
+    }
     fetchRadarTokens(500)
       .then((tokens) => {
         if (cancelled) return;
         setLiveTokens(tokens);
         setLoading(false);
+        try {
+          sessionStorage.setItem(
+            "arcodex:tokens:v1",
+            JSON.stringify({ at: Date.now(), list: tokens })
+          );
+        } catch {
+          /* ignore quota errors */
+        }
       })
       .catch(() => {
         if (cancelled) return;

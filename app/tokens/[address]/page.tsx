@@ -283,22 +283,22 @@ export default function TokenDetailPage() {
   );
 
   useEffect(() => {
-    if (!token) return;
-    loadChart(token.address, tf);
+    if (!params.address) return;
+    loadChart(params.address, tf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, tf]);
+  }, [params.address, tf]);
 
-  // Load recent swaps
+  // Load recent swaps (parallel with the token fetch — only needs the address)
   useEffect(() => {
-    if (!token) return;
+    if (!params.address) return;
     let cancelled = false;
-    fetchRadarSwaps(token.address, 25).then((s) => {
+    fetchRadarSwaps(params.address, 25).then((s) => {
       if (!cancelled && Array.isArray(s)) setSwaps(s);
     });
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [params.address]);
 
   const chartData: Candle[] = chartCandles.map((c) => ({
     time: c.time,

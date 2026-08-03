@@ -203,11 +203,19 @@ export async function fetchChainToken(address: string): Promise<ArcToken | null>
   }
 }
 
-/** Fetch token: RadarDex first, then the on-chain bonding curve fallback. */
+/**
+ * Fetch token: RadarDex and the on-chain bonding curve run in parallel;
+ * the first valid result wins so the page renders as fast as possible.
+ * RadarDex has richer data (pools, chart) but is slow; the chain fallback
+ * is fast but minimal. When RadarDex wins, we also try to upgrade with the
+ * chain data (socials, creator) without blocking render.
+ */
 export async function fetchTokenOrChain(address: string): Promise<ArcToken | null> {
-  const radar = await fetchRadarToken(address);
-  if (radar) return radar;
-  return fetchChainToken(address);
+  const [radar, chain] = await Promise.all([
+    fetchRadarToken(address),
+    fetchChainToken(address),
+  ]);
+  return radar ?? chain;
 }
 
 /** Fetch real candlesticks for a token. tf is seconds per candle. */
