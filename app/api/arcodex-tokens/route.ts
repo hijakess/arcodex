@@ -142,7 +142,7 @@ function decodeTokens(raw: string): TokenRaw {
 }
 
 // ---- In-memory cache (per serverless instance) ----
-let cacheData: { json: unknown; at: number } | null = null;
+let cacheData: { key: string; json: unknown; at: number } | null = null;
 const CACHE_TTL = 120_000; // 2min in-memory
 // CDN: fresh 2min, stale up to 10min (stale-while-revalidate) so the page
 // always paints instantly and refreshes in the background.
@@ -167,8 +167,13 @@ async function mapLimit<T, R>(
   return out;
 }
 
-export async function GET() {
-  if (cacheData && Date.now() - cacheData.at < CACHE_TTL) {
+export async function GET(req: Request) {
+  // Optional ?holder=0x... adds per-holder data (balances + claimable fees)
+  // so Profile can render real on-chain data without browser->RPC calls.
+  const holder = new URL(req.url).searchParams.get("holder")?.toLowerCase() || "";
+  const cacheKey = holder || "all";
+
+  if (cacheData && cacheData.key === cacheKey && Date.now() - cacheData.at < CACHE_TTL) {
     return NextResponse.json(cacheData.json, {
       headers: { CDN_CACHE },
     });
@@ -190,8 +195,24 @@ export async function GET() {
     );
     const tokens = raws.map(decodeTokens);
 
-    const body = { count, tokens: tokens.reverse() };
-    cacheData = { json: body, at: Date.now() };
+    const body: any = { count, tokens: tokens.reverse() };
+
+    // Per-holder view: ERC20 balanceOf(token, holder) for every Arcodex token.
+    // balanceOf(address) selector = 0x70a08231 + padded address.
+    if (holder && /^0x[0-9a-f]{40}$/.test(holder)) {
+      const balanceSel = `0x70a08231000000000000000000000000${holder.slice(2)}`;
+      const balances = await mapLimit(addresses, 4, (a, i) =>
+        rpcCall("eth_call", [{ to: a, data: balanceSel }, "latest"], 400 + i)
+      );
+      body.holdings = tokens.map((t, i) => ({
+        token: t.token,
+        symbol: t.symbol,
+        name: t.name,
+        balance: BigInt(balances[i] || "0x0").toString(),
+      }));
+    }
+
+    cacheData = { key: cacheKey, json: body, at: Date.now() };
     return NextResponse.json(body, {
       headers: { CDN_CACHE },
     });

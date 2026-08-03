@@ -155,6 +155,7 @@ export const BONDING_ABI = parseAbi([
   "function tokens(address) view returns (address token, address creator, address creatorFeeWallet, string name, string symbol, string website, string twitter, string telegram, string discord, uint256 supply, uint256 startingPrice, uint256 graduationThreshold, uint256 sold, uint256 totalCollected, uint256 creatorClaimable, uint256 platformClaimable, uint8 bondingType, bool graduated, address pool)",
   "function pendingHolderRewards(address token, address holder) view returns (uint256)",
   "function claimHolderRewards(address token)",
+  "function claimCreatorFees(address token)",
   "function holderRewardPool(address) view returns (uint256)",
   "function accRewardPerShare(address) view returns (uint256)",
   "function claimedHolderRewards(address,address) view returns (uint256)",
@@ -242,6 +243,23 @@ export async function getPendingHolderRewards(
     args: [token, holder],
   });
   return BigInt(r as bigint);
+}
+
+/** Claim creator fees (USDC) accrued by a launched token's creator. */
+export async function claimCreatorFees(
+  provider: unknown,
+  account: Address,
+  token: Address
+): Promise<Hex> {
+  const client = walletClient(provider);
+  const { request } = await publicClient().simulateContract({
+    address: ARCODEX_BONDING,
+    abi: BONDING_ABI,
+    functionName: "claimCreatorFees",
+    args: [token],
+    account,
+  });
+  return client.writeContract(request);
 }
 
 /** Check whether a token was launched on the Arcodex bonding curve. */
