@@ -49,12 +49,13 @@ export function formatAxisPrice(p: number): string {
 export default function TradingViewChart({
   priceData,
   mcapData,
-  height = 260,
+  height,
   accent = "#22d3ee",
   showMetricToggle = false,
 }: {
   priceData: Candle[];
   mcapData?: Candle[];
+  /** Optional fixed pixel height. When omitted the chart fills its parent (h-full). */
   height?: number;
   accent?: string;
   showMetricToggle?: boolean;
@@ -68,7 +69,7 @@ export default function TradingViewChart({
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = createChart(containerRef.current, {
-      height,
+      ...(height ? { height } : {}),
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
         textColor: "rgba(232,236,242,0.55)",
@@ -121,14 +122,14 @@ export default function TradingViewChart({
   }, [data, height, accent]);
 
   return (
-    <div>
+    <div className="flex h-full w-full flex-col">
       {showMetricToggle && (
-        <div className="mb-2 flex gap-1 rounded-md border border-[var(--border)] p-0.5">
+        <div className="mb-2 flex w-max gap-1 self-end rounded-md border border-[var(--border)] p-0.5">
           {(["price", "mcap"] as ChartMetric[]).map((m) => (
             <button
               key={m}
               onClick={() => setMetric(m)}
-              className={`rounded px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition ${
+              className={`rounded px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition ${
                 metric === m
                   ? "bg-[var(--accent)] font-semibold text-[#05070b]"
                   : "text-[var(--text-2)] hover:text-[var(--text)]"
@@ -139,7 +140,7 @@ export default function TradingViewChart({
           ))}
         </div>
       )}
-      <div ref={containerRef} className="w-full" style={{ height }} />
+      <div ref={containerRef} className="min-h-0 w-full flex-1" style={height ? { height } : undefined} />
     </div>
   );
 }

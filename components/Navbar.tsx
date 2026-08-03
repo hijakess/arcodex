@@ -3,9 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
-import { List, X } from "@phosphor-icons/react";
+import { List, X, CaretDown, Plus, ArrowsClockwise, Wallet } from "@phosphor-icons/react";
 import { useAuth } from "@/lib/useAuth";
 import { shortAddr } from "@/lib/mockData";
+import { ARC_CHAIN_ID } from "@/lib/wallet";
 
 const NAV_LINKS = [
   { href: "/discover", label: "Discover" },
@@ -18,9 +19,20 @@ const NAV_LINKS = [
 ];
 
 export default function Navbar() {
-  const { user, connect, disconnect, hasPrivy } = useAuth();
+  const {
+    user,
+    connect,
+    disconnect,
+    loading,
+    error,
+    chainId,
+    isWrongChain,
+    addArcChain,
+    switchToArc,
+  } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -37,6 +49,20 @@ export default function Navbar() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
+  async function handleConnect() {
+    setBusy(true);
+    await connect();
+    setBusy(false);
+  }
+
+  async function handleSwitchOrAdd() {
+    setBusy(true);
+    await switchToArc(); // auto-adds the chain when the wallet doesn't have it
+    setBusy(false);
+  }
+
+  const onArc = chainId === ARC_CHAIN_ID;
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg)]/85 backdrop-blur-md">
@@ -68,6 +94,19 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* Wrong-chain pill (desktop) */}
+          {user && isWrongChain && (
+            <button
+              onClick={handleSwitchOrAdd}
+              disabled={busy}
+              className="hidden items-center gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 font-mono text-xs text-amber-300 transition hover:border-amber-400 md:flex disabled:opacity-60"
+            >
+              <ArrowsClockwise size={13} className={busy ? "animate-spin" : ""} />
+              Switch to Arc
+            </button>
+          )}
+
+          {/* Wallet */}
           <div className="relative" ref={menuRef}>
             {user ? (
               <button
@@ -76,33 +115,76 @@ export default function Navbar() {
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] pulse-soft" />
                 {shortAddr(user.address)}
+                <CaretDown size={11} className="opacity-70" />
               </button>
             ) : (
               <button
-                onClick={() => connect("wallet")}
-                className="rounded-md bg-[var(--accent)] px-4 py-1.5 font-mono text-xs font-semibold text-[#05070b] transition hover:brightness-110 active:scale-[0.98]"
+                onClick={handleConnect}
+                disabled={loading || busy}
+                className="flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-1.5 font-mono text-xs font-semibold text-[#05070b] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
               >
-                Connect Wallet
+                <Wallet size={13} />
+                {loading || busy ? "Connecting…" : "Connect Wallet"}
               </button>
             )}
 
             {menuOpen && user && (
-              <div className="absolute right-0 top-11 w-56 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-xl shadow-black/40">
+              <div className="absolute right-0 top-11 w-64 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-xl shadow-black/40">
                 <div className="border-b border-[var(--border)] px-3 py-2">
                   <p className="truncate font-mono text-xs text-[var(--text)]">
                     {user.address}
                   </p>
-                  {user.twitterHandle && (
-                    <p className="mt-0.5 font-mono text-[11px] text-[var(--text-2)]">
-                      @{user.twitterHandle}
+                  <p className="mt-0.5 font-mono text-[10px] text-[var(--text-2)]">
+                    Connected via injected wallet
+                  </p>
+                </div>
+
+                {/* Network status + Add/Switch Arc */}
+                <div className="mt-2 flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                      Network
                     </p>
-                  )}
-                  {!hasPrivy && (
-                    <p className="mt-1 font-mono text-[10px] text-amber-300/80">
-                      demo mode (set Privy App ID to enable real login)
+                    <p className="font-mono text-[11px] font-semibold text-[var(--text)]">
+                      {onArc ? (
+                        <span className="text-[var(--pos)]">Arc ✓</span>
+                      ) : (
+                        <span className="text-amber-300">Not on Arc</span>
+                      )}
                     </p>
+                  </div>
+                  {!onArc && (
+                    <button
+                      onClick={handleSwitchOrAdd}
+                      disabled={busy}
+                      className="flex items-center gap-1 rounded-md border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 font-mono text-[10px] font-semibold text-amber-300 transition hover:border-amber-400 disabled:opacity-60"
+                    >
+                      <ArrowsClockwise size={11} className={busy ? "animate-spin" : ""} />
+                      {busy ? "Switching…" : "Switch to Arc"}
+                    </button>
                   )}
                 </div>
+
+                {/* Add Arc network (works even when already on Arc) */}
+                <button
+                  onClick={async () => {
+                    setBusy(true);
+                    await addArcChain();
+                    setBusy(false);
+                  }}
+                  disabled={busy}
+                  className="mt-1.5 flex w-full items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 font-mono text-xs text-[var(--text)] transition hover:border-[var(--accent)]/50 hover:text-[var(--accent)] disabled:opacity-60"
+                >
+                  <Plus size={13} className="text-[var(--accent)]" />
+                  Add Arc Network
+                </button>
+
+                {error && (
+                  <p className="mt-2 rounded-md border border-[var(--neg)]/40 bg-[var(--neg)]/10 px-3 py-1.5 font-mono text-[10px] text-[var(--neg)]">
+                    {error}
+                  </p>
+                )}
+
                 <Link
                   href="/profile"
                   onClick={() => setMenuOpen(false)}
@@ -130,15 +212,11 @@ export default function Navbar() {
               aria-label="Toggle menu"
               className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
-              {mobileOpen ? (
-                <X size={18} weight="bold" />
-              ) : (
-                <List size={18} weight="bold" />
-              )}
+              {mobileOpen ? <X size={18} weight="bold" /> : <List size={18} weight="bold" />}
             </button>
 
             {mobileOpen && (
-              <div className="absolute right-0 top-11 w-52 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-xl shadow-black/40">
+              <div className="absolute right-0 top-11 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-xl shadow-black/40">
                 {NAV_LINKS.map((l) => (
                   <Link
                     key={l.href}
@@ -149,6 +227,58 @@ export default function Navbar() {
                     {l.label}
                   </Link>
                 ))}
+
+                <div className="my-1.5 border-t border-[var(--border)]" />
+
+                {user ? (
+                  <>
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <p className="truncate font-mono text-[11px] text-[var(--accent)]">
+                        {shortAddr(user.address)}
+                      </p>
+                      {!onArc && (
+                        <button
+                          onClick={handleSwitchOrAdd}
+                          disabled={busy}
+                          className="ml-2 flex shrink-0 items-center gap-1 rounded border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 font-mono text-[10px] text-amber-300 disabled:opacity-60"
+                        >
+                          <ArrowsClockwise size={10} className={busy ? "animate-spin" : ""} />
+                          Switch to Arc
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setBusy(true);
+                        await addArcChain();
+                        setBusy(false);
+                      }}
+                      disabled={busy}
+                      className="flex w-full items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 font-mono text-xs text-[var(--text)] transition hover:border-[var(--accent)]/50 disabled:opacity-60"
+                    >
+                      <Plus size={13} className="text-[var(--accent)]" />
+                      Add Arc Network
+                    </button>
+                    <button
+                      onClick={() => {
+                        disconnect();
+                        setMobileOpen(false);
+                      }}
+                      className="mt-1 w-full rounded-md px-3 py-2 text-left font-mono text-xs text-[var(--neg)] transition hover:bg-white/5"
+                    >
+                      Disconnect
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleConnect}
+                    disabled={loading || busy}
+                    className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-3 py-2.5 font-mono text-xs font-semibold text-[#05070b] transition hover:brightness-110 disabled:opacity-60"
+                  >
+                    <Wallet size={13} />
+                    {loading || busy ? "Connecting…" : "Connect Wallet"}
+                  </button>
+                )}
               </div>
             )}
           </div>

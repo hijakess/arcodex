@@ -9,7 +9,7 @@ import { Coins, Wallet, ArrowUpRight } from "@phosphor-icons/react";
 import { useState } from "react";
 
 export default function ProfilePage() {
-  const { user, connect } = useAuth();
+  const { user, connect, hasPrivy, isWrongChain, chainId, switchToArc } = useAuth();
   const [claimed, setClaimed] = useState<string[]>([]);
   const totalClaimable = claimableFees.reduce((s, f) => s + f.claimable, 0);
   const totalPnl = myHoldings.reduce((s, h) => s + h.pnlUsdc, 0);
@@ -33,12 +33,14 @@ export default function ProfilePage() {
             >
               Connect Wallet
             </button>
-            <button
-              onClick={() => connect("twitter")}
-              className="w-full rounded-md border border-[var(--border)] py-3 font-mono text-sm text-[var(--text)] transition hover:border-[var(--accent)]/50"
-            >
-              Log in with X
-            </button>
+            {hasPrivy && (
+              <button
+                onClick={() => connect("twitter")}
+                className="w-full rounded-md border border-[var(--border)] py-3 font-mono text-sm text-[var(--text)] transition hover:border-[var(--accent)]/50"
+              >
+                Log in with X
+              </button>
+            )}
           </div>
         </section>
       </main>
@@ -53,9 +55,20 @@ export default function ProfilePage() {
           <div>
             <h1 className="font-mono text-3xl font-semibold tracking-tight">Profile</h1>
             <p className="mt-1 font-mono text-xs text-[var(--text-2)]">
-              {shortAddr(user.address)}
+              {user.address}
               {user.twitterHandle ? ` · @${user.twitterHandle}` : ""}
-              {!user.loginMethod || user.loginMethod === "demo" ? " · demo mode" : ""}
+            </p>
+            <p className="mt-0.5 font-mono text-[10px]">
+              {isWrongChain ? (
+                <span className="text-amber-300">
+                  Wrong network (chain {chainId}) — Arcodex runs on Arc 5042.{" "}
+                  <button onClick={() => switchToArc()} className="underline transition hover:text-amber-200">
+                    Switch to Arc
+                  </button>
+                </span>
+              ) : (
+                <span className="text-[var(--pos)]">Connected · Arc network ✓</span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3">

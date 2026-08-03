@@ -16,13 +16,17 @@ import {
   RadarSwap,
 } from "@/lib/radar";
 import { formatUsdc, formatNum, timeAgo, shortAddr } from "@/lib/mockData";
+import { useAuth } from "@/lib/useAuth";
+import { useWallet, ARC_CHAIN_ID } from "@/lib/wallet";
 import {
   executeSwap,
   approveToken,
   quoteSwap,
+  publicClient,
   ARCODEX_FEE_ROUTER,
   SWAP_ROUTER,
   USDC,
+  ERC20_ABI,
   FEE_BPS,
   CREATOR_SHARE_BPS,
   PLATFORM_SHARE_BPS,
@@ -58,11 +62,64 @@ export default function TokenDetailPage() {
   >("idle");
   const [swapError, setSwapError] = useState("");
   const [lastTx, setLastTx] = useState("");
+  const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<bigint | null>(null);
+
+  // Real wallet (EIP-1193 injected provider)
+  const {
+    account,
+    chainId,
+    connect,
+    connecting,
+    isWrongChain,
+    switchToArc,
+    addArcChain,
+    error: walletError,
+  } = useAuth();
+  const { provider } = useWallet();
+
+  // Fetch real USDC + token balances for the connected account
+  useEffect(() => {
+    if (!account || !token) {
+      setUsdcBalance(null);
+      setTokenBalance(null);
+      return;
+    }
+    let cancelled = false;
+    const client = publicClient();
+    (async () => {
+      try {
+        const [usdc, tok] = await Promise.all([
+          client.readContract({
+            address: USDC,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [account as Address],
+          }),
+          client.readContract({
+            address: token.address as Address,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [account as Address],
+          }),
+        ]);
+        if (!cancelled) {
+          setUsdcBalance(BigInt(usdc as bigint));
+          setTokenBalance(BigInt(tok as bigint));
+        }
+      } catch {
+        /* RPC hiccup — leave balances unknown */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [account, token]);
 
   // Pool fee tier for this token (RadarDex V3 pools commonly use 1% = 10000)
   const poolFee = 10000;
 
-  // Try swap via injected wallet (window.ethereum) -> ArcodexFeeRouter (1.5%)
+  // Try swap via injected wallet -> ArcodexFeeRouter (1.5%)
   async function handleSwap() {
     if (!token) return;
     const amt = Number(amount);
@@ -71,17 +128,24 @@ export default function TokenDetailPage() {
       setSwapStatus("error");
       return;
     }
-    const eth = (window as any).ethereum;
-    if (!eth?.request) {
-      setSwapError("No wallet detected. Install MetaMask / Rabby and add the Arc network (chainId 5042).");
+    // Gate 1: wallet must be connected
+    if (!account) {
+      await connect();
+      return;
+    }
+    // Gate 2: wallet must be on Arc (auto-adds the chain if missing)
+    if (isWrongChain) {
+      const ok = await switchToArc();
+      if (!ok) return;
+    }
+    if (!provider) {
+      setSwapError("No wallet detected. Install MetaMask / Rabby to continue.");
       setSwapStatus("error");
       return;
     }
     try {
       setSwapStatus("quoting");
       setSwapError("");
-      const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
-      const account = accounts[0] as Address;
       const tokenAddr = token.address as Address;
 
       const isBuy = mode === "buy";
@@ -98,10 +162,10 @@ export default function TokenDetailPage() {
 
       // approve only the input token
       setSwapStatus("approving");
-      await approveToken(eth, account, tokenIn);
+      await approveToken(provider, account as Address, tokenIn);
 
       setSwapStatus("swapping");
-      const { txHash } = await executeSwap(eth, account, tokenIn, tokenOut, poolFee, amountIn, minOut);
+      const { txHash } = await executeSwap(provider, account as Address, tokenIn, tokenOut, poolFee, amountIn, minOut);
       setLastTx(txHash);
       setSwapStatus("success");
     } catch (e: any) {
@@ -268,7 +332,7 @@ export default function TokenDetailPage() {
                   ))}
                 </div>
               </div>
-              <div className="mt-3 h-56 w-full sm:h-64">
+              <div className="mt-3 flex h-64 w-full flex-col sm:h-80">
                 {chartData.length > 0 ? (
                   <TradingViewChart
                     priceData={chartData}
@@ -405,7 +469,37 @@ export default function TokenDetailPage() {
               <div className="mt-4 rounded-md border border-[var(--border)] bg-[var(--bg)] p-3">
                 <div className="flex items-center justify-between font-mono text-[10px] text-[var(--text-2)]">
                   <span>{mode === "buy" ? "You pay" : "You sell"}</span>
-                  <span>Balance: 1,250.00</span>
+                  <span className="flex items-center gap-1.5">
+                    {account ? (
+                      <>
+                        Balance:{" "}
+                        {mode === "buy"
+                          ? usdcBalance !== null
+                            ? formatUsdc(Number(usdcBalance) / 1e6)
+                            : "—"
+                          : tokenBalance !== null
+                            ? Number(tokenBalance) / 1e18 < 1000
+                              ? Number(tokenBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                              : Number(tokenBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                            : "—"}
+                        <button
+                          onClick={() => {
+                            if (mode === "buy" && usdcBalance !== null) {
+                              setAmount((Number(usdcBalance) / 1e6).toFixed(4));
+                            } else if (mode === "sell" && tokenBalance !== null) {
+                              setAmount((Number(tokenBalance) / 1e18).toFixed(4));
+                            }
+                          }}
+                          disabled={usdcBalance === null && tokenBalance === null}
+                          className="rounded border border-[var(--accent)]/40 px-1.5 py-0.5 font-mono text-[9px] font-bold text-[var(--accent)] transition hover:bg-[var(--accent)]/10 disabled:opacity-40"
+                        >
+                          MAX
+                        </button>
+                      </>
+                    ) : (
+                      "not connected"
+                    )}
+                  </span>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <input
@@ -461,6 +555,26 @@ export default function TokenDetailPage() {
                 </div>
               </div>
 
+              {account && isWrongChain && (
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2">
+                  <p className="font-mono text-[10px] text-amber-300">
+                    Wallet is on chain {chainId}. Arcodex runs on Arc (5042).
+                  </p>
+                  <button
+                    onClick={async () => {
+                      await switchToArc();
+                    }}
+                    className="shrink-0 rounded border border-amber-400/40 bg-amber-400/10 px-2 py-1 font-mono text-[10px] font-semibold text-amber-300 transition hover:border-amber-400"
+                  >
+                    Switch to Arc
+                  </button>
+                </div>
+              )}
+              {walletError && !isWrongChain && (
+                <p className="mt-3 rounded-md border border-[var(--neg)]/40 bg-[var(--neg)]/10 px-3 py-2 font-mono text-[11px] text-[var(--neg)]">
+                  {walletError}
+                </p>
+              )}
               {swapStatus === "error" && (
                 <p className="mt-3 rounded-md border border-[var(--neg)]/40 bg-[var(--neg)]/10 px-3 py-2 font-mono text-[11px] text-[var(--neg)]">
                   {swapError}
@@ -482,22 +596,30 @@ export default function TokenDetailPage() {
 
               <button
                 onClick={handleSwap}
-                disabled={swapStatus === "quoting" || swapStatus === "approving" || swapStatus === "swapping"}
+                disabled={connecting || swapStatus === "quoting" || swapStatus === "approving" || swapStatus === "swapping"}
                 className={`mt-5 w-full rounded-md py-3 font-mono text-sm font-semibold transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${
-                  mode === "buy"
-                    ? "bg-[var(--pos)] text-[#05070b] hover:brightness-110"
-                    : "bg-[var(--neg)] text-white hover:brightness-110"
+                  !account || isWrongChain
+                    ? "bg-[var(--accent)] text-[#05070b] hover:brightness-110"
+                    : mode === "buy"
+                      ? "bg-[var(--pos)] text-[#05070b] hover:brightness-110"
+                      : "bg-[var(--neg)] text-white hover:brightness-110"
                 }`}
               >
-                {swapStatus === "quoting"
-                  ? "Quoting…"
-                  : swapStatus === "approving"
-                    ? "Approving…"
-                    : swapStatus === "swapping"
-                      ? "Swapping…"
-                      : mode === "buy"
-                        ? `Buy ${token.symbol}`
-                        : `Sell ${token.symbol}`}
+                {connecting
+                  ? "Connecting…"
+                  : swapStatus === "quoting"
+                    ? "Quoting…"
+                    : swapStatus === "approving"
+                      ? "Approving…"
+                      : swapStatus === "swapping"
+                        ? "Swapping…"
+                        : !account
+                          ? "Connect Wallet"
+                          : isWrongChain
+                            ? "Switch to Arc"
+                            : mode === "buy"
+                              ? `Buy ${token.symbol}`
+                              : `Sell ${token.symbol}`}
               </button>
 
               <p className="mt-3 text-center font-mono text-[10px] text-[var(--text-2)]/60">

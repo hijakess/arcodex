@@ -94,7 +94,7 @@ export default function TokenPage() {
             </p>
 
             {/* Chart */}
-            <div className="mt-6 flex h-64 w-full flex-col rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div className="mt-6 flex h-72 w-full flex-col rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
               <div className="flex items-center justify-between">
                 <p className="font-mono text-xs text-[var(--text-2)]">
                   {token.symbol}/USDC · live price action
@@ -109,7 +109,6 @@ export default function TokenPage() {
                   priceData={chartData}
                   mcapData={mcapData}
                   accent={up ? "#22d3ee" : "#fb7185"}
-                  height={220}
                   showMetricToggle
                 />
               </div>

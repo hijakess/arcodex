@@ -8,7 +8,7 @@ import { BondingType } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
 
 export default function LaunchPage() {
-  const { user, connect } = useAuth();
+  const { user, connect, hasPrivy } = useAuth();
   const [bonding, setBonding] = useState<BondingType>("standard");
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -309,7 +309,7 @@ export default function LaunchPage() {
 
           {!user && (
             <p className="rounded-md border border-amber-300/30 bg-amber-400/5 px-4 py-3 font-mono text-xs text-amber-200/90">
-              Connect a wallet to deploy. You can also log in with X.
+              Connect a wallet (MetaMask / Rabby) to deploy your token on Arc.
             </p>
           )}
 
@@ -320,7 +320,7 @@ export default function LaunchPage() {
           >
             {user ? "Launch token" : "Connect wallet to launch"}
           </button>
-          {!user && (
+          {!user && hasPrivy && (
             <button
               type="button"
               onClick={() => connect("twitter")}
