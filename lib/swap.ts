@@ -24,6 +24,10 @@ export const ARCODEX_FEE_ROUTER = "0x8FcA8fB88337BdedA54AA28227E1294923f5ca52" a
 export const USDC = "0x3600000000000000000000000000000000000000" as Address;
 export const SWAP_ROUTER = "0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77" as Address;
 export const QUOTER = "0x7dfd4f31be6814d2906bde155c3e1b146eac1468" as Address;
+// Platform fee treasury — receives the flat $1 launch fee per deploy.
+export const PLATFORM_TREASURY = "0x04FA941F3fa799f86fE9207D1c77eE4F3331B2f3" as Address;
+// Flat launch fee: 1 USDC (6 decimals) per token deployment, + gas.
+export const LAUNCH_FEE_USDC = 1_000_000n;
 
 // Swap of existing tokens (ArcodexFeeRouter): 1.5% fee, 100% to platform
 export const FEE_BPS = 150n;
@@ -45,6 +49,7 @@ export const ERC20_ABI = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
 ]);
 
 export const FEE_ROUTER_ABI = parseAbi([

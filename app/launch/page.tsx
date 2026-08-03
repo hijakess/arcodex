@@ -17,6 +17,8 @@ import {
   ERC20_ABI,
   BONDING_ABI,
   LAUNCH_FEE_BPS,
+  LAUNCH_FEE_USDC,
+  PLATFORM_TREASURY,
   LAUNCH_CREATOR_SHARE_BPS,
   LAUNCH_PLATFORM_SHARE_BPS,
   LAUNCH_HOLDER_SHARE_BPS,
@@ -29,7 +31,7 @@ const LAUNCH_EVENT_ABI = parseAbi([
   "event TokenLaunched(address indexed token, address indexed creator, string name, string symbol, uint256 supply, uint256 startingPrice, uint8 bondingType)",
 ]);
 
-type LaunchStatus = "idle" | "signing" | "launching" | "buying" | "success" | "error";
+type LaunchStatus = "idle" | "signing" | "paying" | "launching" | "buying" | "success" | "error";
 
 export default function LaunchPage() {
   const { user, account, connect, hasPrivy, isWrongChain, switchToArc, error: walletError } = useAuth();
@@ -147,6 +149,17 @@ export default function LaunchPage() {
         setLaunchStatus("error");
         return;
       }
+
+      // 0) Pay the flat $1 platform launch fee (USDC transfer) — then deploy
+      setLaunchStatus("paying");
+      const { request: feeReq } = await publicClient().simulateContract({
+        address: USDC,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [PLATFORM_TREASURY, LAUNCH_FEE_USDC],
+        account: account as Address,
+      });
+      await walletClient(provider).writeContract(feeReq);
 
       // 1) Launch the token
       setLaunchStatus("launching");
@@ -290,8 +303,8 @@ export default function LaunchPage() {
         <h1 className="font-mono text-3xl font-semibold tracking-tight">Launch</h1>
         <p className="mt-2 font-mono text-xs text-[var(--text-2)]">
           Create a token on {CHAIN.name}. Native currency:{" "}
-          <span className="text-[var(--accent)]">{CHAIN.nativeSymbol}</span>. Deploy fees are paid
-          in native USDC.
+          <span className="text-[var(--accent)]">{CHAIN.nativeSymbol}</span>.
+          Launch fee: <span className="text-[var(--accent)]">$1.00 USDC</span> + gas.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">
@@ -598,9 +611,20 @@ export default function LaunchPage() {
             <div className="mt-4 grid gap-5 sm:grid-cols-2">
               <div className="rounded-md border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3.5 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
-                  Fee rate
+                  Launch fee
                 </p>
                 <p className="mt-1 font-mono text-xl font-semibold text-[var(--accent)]">
+                  $1.00
+                </p>
+                <p className="mt-1 font-mono text-[10px] leading-relaxed text-[var(--text-2)]/80">
+                  Flat platform fee per deploy — paid in USDC, + gas
+                </p>
+              </div>
+              <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                  Trading fee
+                </p>
+                <p className="mt-1 font-mono text-xl font-semibold text-[var(--text)]">
                   {feePct.toFixed(2)}%
                 </p>
                 <p className="mt-1 font-mono text-[10px] leading-relaxed text-[var(--text-2)]/80">
@@ -656,25 +680,28 @@ export default function LaunchPage() {
               !user ||
               isWrongChain ||
               launchStatus === "signing" ||
+              launchStatus === "paying" ||
               launchStatus === "launching" ||
               launchStatus === "buying"
             }
             className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] py-3 font-mono text-sm font-semibold text-[#05070b] transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {(launchStatus === "signing" || launchStatus === "launching" || launchStatus === "buying") && (
+            {(launchStatus === "signing" || launchStatus === "paying" || launchStatus === "launching" || launchStatus === "buying") && (
               <CircleNotch size={15} className="animate-spin" />
             )}
             {launchStatus === "signing"
               ? "Waiting for signature…"
-              : launchStatus === "launching"
-                ? "Deploying token…"
-                : launchStatus === "buying"
-                  ? "Seeding curve…"
-                  : !user
-                    ? "Connect wallet to launch"
-                    : isWrongChain
-                      ? "Switch to Arc first"
-                      : `Launch ${symbol || "token"}`}
+              : launchStatus === "paying"
+                ? "Paying $1 launch fee…"
+                : launchStatus === "launching"
+                  ? "Deploying token…"
+                  : launchStatus === "buying"
+                    ? "Seeding curve…"
+                    : !user
+                      ? "Connect wallet to launch"
+                      : isWrongChain
+                        ? "Switch to Arc first"
+                        : `Launch ${symbol || "token"} · $1`}
           </button>
 
           {user && (
