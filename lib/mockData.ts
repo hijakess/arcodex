@@ -256,9 +256,12 @@ export const claimableFees = tokens
   }));
 
 export function formatUsdc(n: number, decimals = 2): string {
+  if (!isFinite(n)) return "$0";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 10_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n.toFixed(decimals)}`;
+  if (n >= 1) return `$${n.toFixed(decimals)}`;
+  // micro prices: keep significant digits instead of collapsing to 0.0000
+  return `$${Number(n.toPrecision(6)).toString()}`;
 }
 
 export function formatNum(n: number): string {

@@ -5,7 +5,12 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import TradingViewChart, { Candle, candlesToMcap } from "@/components/TradingViewChart";
+import TradingViewChart, {
+  Candle,
+  OhlcCandle,
+  candlesToMcap,
+  ohlcToMcap,
+} from "@/components/TradingViewChart";
 import CopyButton from "@/components/CopyButton";
 import { ArcToken } from "@/lib/arcTokens";
 import {
@@ -58,7 +63,7 @@ export default function TokenDetailPage() {
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
   const [tf, setTf] = useState<Tf>("1D");
-  const [chartCandles, setChartCandles] = useState<Candle[]>([]);
+  const [chartCandles, setChartCandles] = useState<OhlcCandle[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [swaps, setSwaps] = useState<RadarSwap[]>([]);
   const [swapStatus, setSwapStatus] = useState<
@@ -259,7 +264,15 @@ export default function TokenDetailPage() {
       fetchRadarChart(address, candleTf, limit)
         .then((cs) => {
           if (!cs || cs.length === 0) return;
-          setChartCandles(cs.map((c) => ({ time: c.time, value: c.close })));
+          setChartCandles(
+            cs.map((c) => ({
+              time: c.time,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+            }))
+          );
         })
         .catch(() => {})
         .finally(() => setChartLoading(false));
@@ -285,13 +298,20 @@ export default function TokenDetailPage() {
     };
   }, [token]);
 
-  const chartData: Candle[] = chartCandles;
+  const chartData: Candle[] = chartCandles.map((c) => ({
+    time: c.time,
+    value: c.close,
+  }));
 
   // Real supply: mcap / price, so mcap chart ends exactly at displayed mcap
   const supply = token && token.priceUsdc > 0 ? token.mcapUsdc / token.priceUsdc : 1_000_000;
   const mcapData = useMemo(
     () => candlesToMcap(chartData, supply || 1_000_000),
     [chartData, supply]
+  );
+  const candleMcapData = useMemo(
+    () => ohlcToMcap(chartCandles, supply || 1_000_000),
+    [chartCandles, supply]
   );
 
   if (loading) {
@@ -388,10 +408,10 @@ export default function TokenDetailPage() {
                 </div>
               </div>
               <div className="mt-3 flex h-64 w-full flex-col sm:h-80">
-                {chartData.length > 0 ? (
+                {chartCandles.length > 0 ? (
                   <TradingViewChart
-                    priceData={chartData}
-                    mcapData={mcapData}
+                    candles={chartCandles}
+                    candleMcapData={candleMcapData}
                     accent={up ? "#22d3ee" : "#fb7185"}
                     showMetricToggle
                   />
@@ -740,7 +760,7 @@ export default function TokenDetailPage() {
 
         {/* Recent trades */}
         <div className="mt-8 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-4 sm:px-5">
             <div>
               <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-2)]">
                 Recent trades
@@ -758,16 +778,16 @@ export default function TokenDetailPage() {
               View on explorer →
             </a>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse font-mono text-xs">
-              <thead>
+          <div className="max-h-[420px] overflow-auto">
+            <table className="w-full min-w-[560px] border-collapse font-mono text-xs">
+              <thead className="sticky top-0 z-10 bg-[var(--surface)]">
                 <tr className="border-b border-[var(--border)] text-left text-[10px] uppercase tracking-wider text-[var(--text-2)]">
-                  <th className="px-5 py-2.5 font-medium">Side</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Amount (USDC)</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Price</th>
-                  <th className="px-4 py-2.5 font-medium">Trader</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Time</th>
-                  <th className="px-5 py-2.5 text-right font-medium">TX</th>
+                  <th className="px-4 py-2.5 font-medium sm:px-5">Side</th>
+                  <th className="px-3 py-2.5 text-right font-medium sm:px-4">Amount (USDC)</th>
+                  <th className="px-3 py-2.5 text-right font-medium sm:px-4">Price</th>
+                  <th className="px-3 py-2.5 font-medium sm:px-4">Trader</th>
+                  <th className="px-3 py-2.5 text-right font-medium sm:px-4">Time</th>
+                  <th className="px-4 py-2.5 text-right font-medium sm:px-5">TX</th>
                 </tr>
               </thead>
               <tbody>
@@ -785,7 +805,7 @@ export default function TokenDetailPage() {
                       key={`${s.txHash}-${i}`}
                       className={`${i > 0 ? "border-t border-[var(--border)]" : ""} transition hover:bg-white/[0.03]`}
                     >
-                      <td className="px-5 py-3">
+                      <td className="px-4 py-3 sm:px-5">
                         <span
                           className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold ${
                             buy
@@ -797,13 +817,15 @@ export default function TokenDetailPage() {
                           {buy ? "BUY" : "SELL"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right text-[var(--text)]">
+                      <td className="px-3 py-3 text-right text-[var(--text)] sm:px-4">
                         {formatUsdc(s.usdc)}
                       </td>
-                      <td className="px-4 py-3 text-right text-[var(--text)]">
-                        {formatUsdc(s.price, 6)}
+                      <td className="px-3 py-3 text-right text-[var(--text)] sm:px-4">
+                        {s.price >= 1
+                          ? formatUsdc(s.price, 6)
+                          : Number(s.price.toPrecision(5)).toString()}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 sm:px-4">
                         <a
                           href={`https://arc.blockscout.com/address/${s.trader}`}
                           target="_blank"
@@ -813,10 +835,10 @@ export default function TokenDetailPage() {
                           {shortAddr(s.trader)}
                         </a>
                       </td>
-                      <td className="px-4 py-3 text-right text-[var(--text-2)]">
+                      <td className="px-3 py-3 text-right text-[var(--text-2)] sm:px-4">
                         {timeAgo(s.time * 1000)}
                       </td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-4 py-3 text-right sm:px-5">
                         <a
                           href={`https://arc.blockscout.com/tx/${s.txHash}`}
                           target="_blank"

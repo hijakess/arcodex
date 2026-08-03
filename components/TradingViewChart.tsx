@@ -1,14 +1,32 @@
 "use client";
 
-// TradingView lightweight-charts v5 area chart with Price/MCAP metric toggle.
-// Interactive: crosshair, time scale, price scale.
+// TradingView lightweight-charts v5 — candlestick (OHLC) chart with
+// Price/MCAP metric toggle. Interactive: crosshair, time scale, price scale.
+// Candles come from the RadarDex live feed (real OHLC, no mock).
 
 import { useEffect, useRef, useState } from "react";
-import { createChart, ColorType, AreaSeries, IChartApi, UTCTimestamp } from "lightweight-charts";
+import {
+  createChart,
+  ColorType,
+  AreaSeries,
+  CandlestickSeries,
+  IChartApi,
+  UTCTimestamp,
+} from "lightweight-charts";
 
+/** Area chart point (close value). */
 export interface Candle {
   time: number; // unix seconds
   value: number;
+}
+
+/** Candlestick (OHLC) point. */
+export interface OhlcCandle {
+  time: number; // unix seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
 }
 
 export type ChartMetric = "price" | "mcap";
@@ -32,29 +50,50 @@ export function candlesToMcap(data: Candle[], supply: number): Candle[] {
   return data.map((d) => ({ time: d.time, value: d.value * supply }));
 }
 
+export function ohlcToMcap(data: OhlcCandle[], supply: number): OhlcCandle[] {
+  return data.map((d) => ({
+    time: d.time,
+    open: d.open * supply,
+    high: d.high * supply,
+    low: d.low * supply,
+    close: d.close * supply,
+  }));
+}
+
 /**
  * Adaptive price formatter for the y-axis.
- * Micro-priced tokens (0.0001–0.01) need 4–8 decimals, large values (mcap)
- * need compact notation. Picks precision from the magnitude of the value.
+ * Micro-priced tokens (0.000001) need up to 8+ significant digits; large
+ * values (mcap) need compact notation. Uses significant digits for micro
+ * prices so nominal values never collapse to "0.0000".
  */
 export function formatAxisPrice(p: number): string {
+  if (!isFinite(p)) return "$0";
   if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(2)}M`;
   if (p >= 10_000) return `$${(p / 1_000).toFixed(1)}K`;
   if (p >= 1) return `$${p.toFixed(2)}`;
   if (p >= 0.01) return `$${p.toFixed(4)}`;
-  if (p >= 0.0001) return `$${p.toFixed(6)}`;
-  return `$${p.toFixed(8)}`;
+  // micro prices: keep 4 significant digits (e.g. 0.000001234 -> $0.000001234)
+  return `$${Number(p.toPrecision(4)).toString()}`;
 }
+
+const UP = "#34d399"; // --pos
+const DOWN = "#fb7185"; // --neg
 
 export default function TradingViewChart({
   priceData,
   mcapData,
+  candles,
+  candleMcapData,
   height,
   accent = "#22d3ee",
   showMetricToggle = false,
 }: {
-  priceData: Candle[];
+  /** Area series data (used when `candles` is not provided). */
+  priceData?: Candle[];
   mcapData?: Candle[];
+  /** Candlestick (OHLC) data — when provided the chart renders candles. */
+  candles?: OhlcCandle[];
+  candleMcapData?: OhlcCandle[];
   /** Optional fixed pixel height. When omitted the chart fills its parent (h-full). */
   height?: number;
   accent?: string;
@@ -64,7 +103,11 @@ export default function TradingViewChart({
   const chartRef = useRef<IChartApi | null>(null);
   const [metric, setMetric] = useState<ChartMetric>("price");
 
-  const data = metric === "mcap" && mcapData ? mcapData : priceData;
+  const hasCandles = !!candles && candles.length > 0;
+
+  const areaData = metric === "mcap" && mcapData ? mcapData : priceData || [];
+  const candleData =
+    metric === "mcap" && candleMcapData ? candleMcapData : candles || [];
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -78,6 +121,12 @@ export default function TradingViewChart({
       },
       localization: {
         priceFormatter: formatAxisPrice,
+        timeFormatter: (t: number) => {
+          const d = new Date(t * 1000);
+          const hh = String(d.getUTCHours()).padStart(2, "0");
+          const mm = String(d.getUTCMinutes()).padStart(2, "0");
+          return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${hh}:${mm}`;
+        },
       },
       grid: {
         vertLines: { color: "rgba(255,255,255,0.04)" },
@@ -85,11 +134,14 @@ export default function TradingViewChart({
       },
       rightPriceScale: {
         borderColor: "rgba(255,255,255,0.08)",
+        scaleMargins: { top: 0.12, bottom: 0.2 },
       },
       timeScale: {
         borderColor: "rgba(255,255,255,0.08)",
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 2,
+        barSpacing: hasCandles ? 7 : undefined,
       },
       crosshair: {
         mode: 0,
@@ -99,27 +151,48 @@ export default function TradingViewChart({
       autoSize: true,
     });
 
-    const series = chart.addSeries(AreaSeries, {
-      lineColor: accent,
-      topColor: `${accent}55`,
-      bottomColor: `${accent}00`,
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: true,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
-    });
-    series.setData(
-      data.map((d) => ({ time: d.time as UTCTimestamp, value: d.value }))
-    );
-    chart.timeScale().fitContent();
+    if (hasCandles) {
+      const series = chart.addSeries(CandlestickSeries, {
+        upColor: UP,
+        downColor: DOWN,
+        borderVisible: false,
+        wickUpColor: UP,
+        wickDownColor: DOWN,
+        priceLineVisible: false,
+        lastValueVisible: true,
+      });
+      series.setData(
+        candleData.map((d) => ({
+          time: d.time as UTCTimestamp,
+          open: d.open,
+          high: d.high,
+          low: d.low,
+          close: d.close,
+        }))
+      );
+    } else {
+      const series = chart.addSeries(AreaSeries, {
+        lineColor: accent,
+        topColor: `${accent}55`,
+        bottomColor: `${accent}00`,
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 4,
+      });
+      series.setData(
+        areaData.map((d) => ({ time: d.time as UTCTimestamp, value: d.value }))
+      );
+    }
 
+    chart.timeScale().fitContent();
     chartRef.current = chart;
     return () => {
       chart.remove();
       chartRef.current = null;
     };
-  }, [data, height, accent]);
+  }, [areaData, candleData, height, accent, hasCandles]);
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -144,4 +217,3 @@ export default function TradingViewChart({
     </div>
   );
 }
-

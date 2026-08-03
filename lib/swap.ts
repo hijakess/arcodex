@@ -149,6 +149,8 @@ export const BONDING_ABI = [
   "function launchToken(string name, string symbol, string description, string website, string twitter, string telegram, string discord, uint256 supply, uint256 startingPrice, uint256 graduationThreshold, address creatorFeeWallet, uint8 bondingType, address[] whitelist) returns (address token)",
   "function buy(address token, uint256 usdcIn)",
   "function sell(address token, uint256 tokensIn)",
+  "function tokenCount() view returns (uint256)",
+  "function tokenList(uint256) view returns (address)",
   "function tokens(address) view returns (address token, address creator, address creatorFeeWallet, string name, string symbol, string website, string twitter, string telegram, string discord, uint256 supply, uint256 startingPrice, uint256 graduationThreshold, uint256 sold, uint256 totalCollected, uint256 creatorClaimable, uint256 platformClaimable, uint8 bondingType, bool graduated, address pool)",
   "function pendingHolderRewards(address token, address holder) view returns (uint256)",
   "function claimHolderRewards(address token)",
