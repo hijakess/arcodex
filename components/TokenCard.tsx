@@ -9,7 +9,7 @@ export default function TokenCard({ token, index }: { token: Token; index?: numb
   const up = token.change24h >= 0;
   return (
     <Link
-      href={`/token/${token.address}`}
+      href={`/tokens/${token.address}`}
       className="group relative flex flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] transition hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)]"
     >
       <div className="relative aspect-square w-full overflow-hidden">

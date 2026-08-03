@@ -14,7 +14,7 @@ import TradingViewChart, {
 import CopyButton from "@/components/CopyButton";
 import { ArcToken } from "@/lib/arcTokens";
 import {
-  fetchRadarToken,
+  fetchTokenOrChain,
   fetchRadarChart,
   fetchRadarSwaps,
   CHART_TFS,
@@ -234,12 +234,14 @@ export default function TokenDetailPage() {
     }
   }
 
-  // Load token from the live feed (no mock fallback)
+  // Load token from the live feed (no mock fallback). RadarDex first, then
+  // the Arcodex bonding curve on-chain (tokens not yet graduated have no
+  // RadarDex pool, so they'd otherwise show "Token not found").
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setToken(undefined);
-    fetchRadarToken(params.address)
+    fetchTokenOrChain(params.address)
       .then((t) => {
         if (cancelled) return;
         if (t) setToken(t);

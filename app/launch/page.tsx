@@ -227,7 +227,7 @@ export default function LaunchPage() {
               </p>
               <p className="mt-1 break-all font-mono text-[11px] text-[var(--text)]">{launchedToken}</p>
               <Link
-                href={`/token/${launchedToken}`}
+                href={`/tokens/${launchedToken}`}
                 className="mt-2 inline-block font-mono text-[11px] text-[var(--accent)] transition hover:underline"
               >
                 Open token page →

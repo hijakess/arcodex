@@ -172,7 +172,7 @@ export default function ProfilePage() {
                 return (
                   <Link
                     key={h.tokenAddress}
-                    href={`/token/${h.tokenAddress}`}
+                    href={`/tokens/${h.tokenAddress}`}
                     className={`flex items-center justify-between px-4 py-3 transition hover:bg-white/5 ${
                       i > 0 ? "border-t border-[var(--border)]" : ""
                     }`}

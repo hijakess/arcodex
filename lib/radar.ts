@@ -4,6 +4,7 @@
 // Falls back to static arcTokens when the API is unreachable.
 
 import { ArcToken } from "./arcTokens";
+import { placeholderImage } from "./swap";
 
 const RADAR_API = "https://web-production-efe27.up.railway.app";
 const FALLBACK_IMAGE = "/tokens/arcl.svg";
@@ -128,6 +129,85 @@ export async function fetchRadarToken(address: string): Promise<ArcToken | null>
   } catch {
     return null;
   }
+}
+
+// ---- On-chain fallback (tokens launched on the Arcodex bonding curve) ----
+// RadarDex only indexes tokens that have a live pool; bonding-curve tokens
+// that haven't graduated yet are invisible to it. When that happens we fall
+// back to the Arcodex API route (which reads the bonding curve directly).
+
+interface ChainTokenInfo {
+  token: string;
+  creator: string;
+  creatorFeeWallet: string;
+  name: string;
+  symbol: string;
+  website: string;
+  twitter: string;
+  telegram: string;
+  discord: string;
+  supply: string;
+  startingPrice: string;
+  graduationThreshold: string;
+  sold: string;
+  totalCollected: string;
+  creatorClaimable: string;
+  platformClaimable: string;
+  bondingType: number;
+  graduated: boolean;
+  pool: string;
+}
+
+function chainToArcToken(info: ChainTokenInfo): ArcToken {
+  const startingPrice = Number(info.startingPrice) / 1e6;
+  const threshold = Math.max(1, Number(info.graduationThreshold) / 1e18);
+  const sold = Number(info.sold) / 1e18;
+  const price = startingPrice * (1 + sold / threshold);
+  const supply = Number(info.supply) / 1e18;
+  const cleanPool = /^0x0+$|^0x0x0+$/.test(info.pool) ? "" : info.pool;
+  return {
+    address: info.token,
+    fullAddress: info.token,
+    symbol: info.symbol,
+    name: info.name,
+    image: placeholderImage(info.symbol, info.token),
+    launchpad: "Arcodex",
+    priceUsdc: price,
+    mcapUsdc: price * supply,
+    change24h: 0,
+    volume24h: Number(info.totalCollected) / 1e6,
+    holders: 0,
+    liquidityUsdc: 0,
+    ageH: 0,
+    website: info.website || undefined,
+    twitter: info.twitter ? info.twitter.replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//, "") : undefined,
+    telegram: info.telegram || undefined,
+    discord: info.discord || undefined,
+    poolAddress: cleanPool,
+  };
+}
+
+/** Fetch a token from the Arcodex bonding curve (server-side API route). */
+export async function fetchChainToken(address: string): Promise<ArcToken | null> {
+  try {
+    const r = await fetch("/api/arcodex-tokens", { cache: "no-store" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const list: ChainTokenInfo[] = Array.isArray(d?.tokens) ? d.tokens : [];
+    const info = list.find(
+      (t) => t.token.toLowerCase() === address.toLowerCase()
+    );
+    return info ? chainToArcToken(info) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch token: RadarDex first, then the on-chain bonding curve fallback. */
+export async function fetchTokenOrChain(address: string): Promise<ArcToken | null> {
+  const radar = await fetchRadarToken(address);
+  if (radar) return radar;
+  return fetchChainToken(address);
 }
 
 /** Fetch real candlesticks for a token. tf is seconds per candle. */
