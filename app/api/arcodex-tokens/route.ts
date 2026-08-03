@@ -51,7 +51,7 @@ async function throttle() {
   lastRpc = Date.now();
 }
 
-async function rpcCall(method: string, params: unknown[], id: number, retries = 3) {
+async function rpcCall(method: string, params: unknown[], id: number, retries = 2) {
   const urls = [RPC, RPC_FALLBACK];
   for (let u = 0; u < urls.length; u++) {
     for (let attempt = 0; ; attempt++) {
@@ -66,14 +66,14 @@ async function rpcCall(method: string, params: unknown[], id: number, retries = 
             Referer: "https://arcanine.lol/",
           },
           body: JSON.stringify({ jsonrpc: "2.0", method, params, id: id + u * 100 }),
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(12000),
           cache: "no-store",
         });
         const j = await r.json();
         if (j.error) {
           const msg = String(j.error.message || "");
           if (/quota|rate limit|429|599|limit/i.test(msg) && attempt < retries) {
-            await sleep(3000 * (attempt + 1));
+            await sleep(900 * (attempt + 1));
             continue;
           }
           throw new Error(msg);
@@ -82,7 +82,7 @@ async function rpcCall(method: string, params: unknown[], id: number, retries = 
       } catch (e: any) {
         const msg = String(e?.message || e);
         if (attempt < retries) {
-          await sleep(3000 * (attempt + 1));
+          await sleep(900 * (attempt + 1));
           continue;
         }
         // give up on this URL, try the fallback
