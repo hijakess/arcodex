@@ -5,6 +5,7 @@ import { formatUsdc, formatNum } from "@/lib/mockData";
 import BondingBadge from "./BondingBadge";
 
 export default function TokenCard({ token, index }: { token: Token; index?: number }) {
+  const hasChange = token.change24h !== 0;
   const up = token.change24h >= 0;
   return (
     <Link
@@ -12,13 +13,22 @@ export default function TokenCard({ token, index }: { token: Token; index?: numb
       className="group relative flex flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] transition hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)]"
     >
       <div className="relative aspect-square w-full overflow-hidden">
-        <Image
-          src={token.image}
-          alt={token.name}
-          width={320}
-          height={320}
-          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-        />
+        {token.image.startsWith("data:") ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={token.image}
+            alt={token.name}
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <Image
+            src={token.image}
+            alt={token.name}
+            width={320}
+            height={320}
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+          />
+        )}
         <div className="absolute left-2 top-2 flex gap-1.5">
           <BondingBadge type={token.bondingType} />
         </div>
@@ -36,11 +46,14 @@ export default function TokenCard({ token, index }: { token: Token; index?: numb
           </div>
           <span
             className={`shrink-0 font-mono text-xs font-semibold ${
-              up ? "text-[var(--pos)]" : "text-[var(--neg)]"
+              !hasChange
+                ? "text-[var(--text-2)]/60"
+                : up
+                  ? "text-[var(--pos)]"
+                  : "text-[var(--neg)]"
             }`}
           >
-            {up ? "+" : ""}
-            {token.change24h.toFixed(1)}%
+            {!hasChange ? "—" : `${up ? "+" : ""}${token.change24h.toFixed(1)}%`}
           </span>
         </div>
 
@@ -63,8 +76,8 @@ export default function TokenCard({ token, index }: { token: Token; index?: numb
         </div>
 
         <div className="flex items-center justify-between border-t border-[var(--border)] pt-2 font-mono text-[11px] text-[var(--text-2)]">
-          <span>{formatNum(token.holders)} holders</span>
-          <span>{formatUsdc(token.volume24h)} vol</span>
+          <span>{token.holders > 0 ? `${formatNum(token.holders)} holders` : "— holders"}</span>
+          <span>{token.volume24h > 0 ? `${formatUsdc(token.volume24h)} vol` : "— vol"}</span>
         </div>
       </div>
     </Link>

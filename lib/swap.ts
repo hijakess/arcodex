@@ -260,3 +260,109 @@ export async function isArcodexToken(token: Address): Promise<boolean> {
     return false;
   }
 }
+
+export interface ArcodexTokenInfo {
+  token: string;
+  creator: string;
+  creatorFeeWallet: string;
+  name: string;
+  symbol: string;
+  website: string;
+  twitter: string;
+  telegram: string;
+  discord: string;
+  supply: bigint;
+  startingPrice: bigint; // USDC per token, 6 decimals
+  graduationThreshold: bigint;
+  sold: bigint;
+  totalCollected: bigint;
+  creatorClaimable: bigint;
+  platformClaimable: bigint;
+  bondingType: 0 | 1; // 0=standard, 1=early-buy
+  graduated: boolean;
+  pool: string;
+}
+
+/** Read a single token's info from the bonding curve. */
+export async function getArcodexTokenInfo(
+  token: Address
+): Promise<ArcodexTokenInfo | null> {
+  const client = publicClient();
+  try {
+    const info = (await client.readContract({
+      address: ARCODEX_BONDING,
+      abi: BONDING_ABI,
+      functionName: "tokens",
+      args: [token],
+    })) as readonly unknown[];
+    if (info[0] === "0x0000000000000000000000000000000000000000") return null;
+    return {
+      token: info[0] as string,
+      creator: info[1] as string,
+      creatorFeeWallet: info[2] as string,
+      name: info[3] as string,
+      symbol: info[4] as string,
+      website: info[5] as string,
+      twitter: info[6] as string,
+      telegram: info[7] as string,
+      discord: info[8] as string,
+      supply: BigInt(info[9] as bigint),
+      startingPrice: BigInt(info[10] as bigint),
+      graduationThreshold: BigInt(info[11] as bigint),
+      sold: BigInt(info[12] as bigint),
+      totalCollected: BigInt(info[13] as bigint),
+      creatorClaimable: BigInt(info[14] as bigint),
+      platformClaimable: BigInt(info[15] as bigint),
+      bondingType: (Number(info[16]) as 0 | 1),
+      graduated: info[17] as boolean,
+      pool: info[18] as string,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Deterministic SVG placeholder for tokens without an image. */
+export function placeholderImage(symbol: string, address: string): string {
+  const s = symbol.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "?";
+  // hue from the address so each token gets a stable colour
+  const hue = (parseInt(address.slice(2, 10), 16) || 190) % 360;
+  const hue2 = (hue + 40) % 360;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(${hue},70%,28%)'/><stop offset='1' stop-color='hsl(${hue2},70%,16%)'/></linearGradient></defs><rect width='320' height='320' fill='url(#g)'/><text x='50%' y='54%' font-family='monospace' font-size='88' font-weight='bold' fill='rgba(255,255,255,0.92)' text-anchor='middle' dominant-baseline='middle'>${s}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * Fetch ALL tokens launched on the Arcodex bonding curve, newest first.
+ * Uses tokenCount + tokenList + tokens(address). No mock data.
+ */
+export async function getArcodexTokens(): Promise<ArcodexTokenInfo[]> {
+  const client = publicClient();
+  const count = Number(
+    (await client.readContract({
+      address: ARCODEX_BONDING,
+      abi: BONDING_ABI,
+      functionName: "tokenCount",
+    })) as bigint
+  );
+  if (count === 0) return [];
+
+  // read the token list (sequential to be gentle on the RPC)
+  const addresses: Address[] = [];
+  for (let i = 0; i < count; i++) {
+    const addr = (await client.readContract({
+      address: ARCODEX_BONDING,
+      abi: BONDING_ABI,
+      functionName: "tokenList",
+      args: [BigInt(i)],
+    })) as Address;
+    addresses.push(addr);
+  }
+
+  const tokens: ArcodexTokenInfo[] = [];
+  for (const addr of addresses) {
+    const info = await getArcodexTokenInfo(addr);
+    if (info) tokens.push(info);
+  }
+  return tokens.reverse(); // newest first
+}
