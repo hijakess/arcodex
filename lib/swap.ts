@@ -4,6 +4,7 @@ import {
   createWalletClient,
   custom,
   http,
+  parseAbi,
   type Address,
   type Hex,
 } from "viem";
@@ -145,7 +146,7 @@ export async function approveToken(
 
 // ---- Bonding curve (launch tokens) ----
 
-export const BONDING_ABI = [
+export const BONDING_ABI = parseAbi([
   "function launchToken(string name, string symbol, string description, string website, string twitter, string telegram, string discord, uint256 supply, uint256 startingPrice, uint256 graduationThreshold, address creatorFeeWallet, uint8 bondingType, address[] whitelist) returns (address token)",
   "function buy(address token, uint256 usdcIn)",
   "function sell(address token, uint256 tokensIn)",
@@ -161,7 +162,7 @@ export const BONDING_ABI = [
   "function CREATOR_SHARE_BPS() view returns (uint256)",
   "function PLATFORM_SHARE_BPS() view returns (uint256)",
   "function HOLDER_SHARE_BPS() view returns (uint256)",
-] as const;
+] as const);
 
 export interface LaunchParams {
   name: string;
@@ -335,33 +336,56 @@ export function placeholderImage(symbol: string, address: string): string {
 /**
  * Fetch ALL tokens launched on the Arcodex bonding curve, newest first.
  * Uses tokenCount + tokenList + tokens(address). No mock data.
+ * Retries transient RPC errors (Railway is rate-limited).
  */
+async function readWithRetry<T>(fn: () => Promise<T>, retries = 4): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      const msg = String(e?.shortMessage || e?.message || e || "");
+      const transient =
+        msg.includes("limit") ||
+        msg.includes("429") ||
+        msg.includes("599") ||
+        msg.includes("timeout") ||
+        msg.includes("fetch");
+      if (!transient || attempt >= retries) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+}
+
 export async function getArcodexTokens(): Promise<ArcodexTokenInfo[]> {
   const client = publicClient();
   const count = Number(
-    (await client.readContract({
-      address: ARCODEX_BONDING,
-      abi: BONDING_ABI,
-      functionName: "tokenCount",
-    })) as bigint
+    await readWithRetry(() =>
+      client.readContract({
+        address: ARCODEX_BONDING,
+        abi: BONDING_ABI,
+        functionName: "tokenCount",
+      })
+    )
   );
   if (count === 0) return [];
 
   // read the token list (sequential to be gentle on the RPC)
   const addresses: Address[] = [];
   for (let i = 0; i < count; i++) {
-    const addr = (await client.readContract({
-      address: ARCODEX_BONDING,
-      abi: BONDING_ABI,
-      functionName: "tokenList",
-      args: [BigInt(i)],
-    })) as Address;
-    addresses.push(addr);
+    const addr = await readWithRetry(() =>
+      client.readContract({
+        address: ARCODEX_BONDING,
+        abi: BONDING_ABI,
+        functionName: "tokenList",
+        args: [BigInt(i)],
+      })
+    );
+    addresses.push(addr as Address);
   }
 
   const tokens: ArcodexTokenInfo[] = [];
   for (const addr of addresses) {
-    const info = await getArcodexTokenInfo(addr);
+    const info = await readWithRetry(() => getArcodexTokenInfo(addr));
     if (info) tokens.push(info);
   }
   return tokens.reverse(); // newest first
