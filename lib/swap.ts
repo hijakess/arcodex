@@ -69,9 +69,13 @@ export const QUOTER_ABI_STRUCT = parseAbi([
  * Public client for reads/simulates. Browser NEVER hits the public RPC
  * directly (Railway rate-limits per-IP, arcanine rejects foreign Origins);
  * every call goes through the server-side /api/rpc proxy instead.
+ * Client-side timeout guards against a hung proxy (Vercel cold start etc).
  */
 export function publicClient() {
-  return createPublicClient({ chain: ARC_CHAIN, transport: http("/api/rpc") });
+  return createPublicClient({
+    chain: ARC_CHAIN,
+    transport: http("/api/rpc", { timeout: 9000 }),
+  });
 }
 
 /** Wallet client from an injected provider (window.ethereum). */

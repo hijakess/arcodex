@@ -78,6 +78,10 @@ export default function TokenDetailPage() {
   // Live quote (via server-side /api/rpc proxy — fast, no rate-limit)
   const [liveQuote, setLiveQuote] = useState<number | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  // Raw bigint quote + the input that produced it, so handleSwap can reuse the
+  // auto-quote instead of re-quoting (kills the long "Quoting…" second call).
+  const [liveQuoteRaw, setLiveQuoteRaw] = useState<bigint | null>(null);
+  const [liveQuoteKey, setLiveQuoteKey] = useState("");
 
   // Holder dividends (Plan A) — only for tokens launched on Arcodex
   const [isArcodex, setIsArcodex] = useState(false);
@@ -191,6 +195,8 @@ export default function TokenDetailPage() {
     const amt = Number(amount);
     if (!amt || amt <= 0) {
       setLiveQuote(null);
+      setLiveQuoteRaw(null);
+      setLiveQuoteKey("");
       return;
     }
     let cancelled = false;
@@ -205,9 +211,15 @@ export default function TokenDetailPage() {
           : BigInt(Math.round(amt * 1e18));
         const q = await quoteSwap(tokenIn, tokenOut, amountIn, poolFee);
         if (cancelled) return;
+        setLiveQuoteRaw(q);
+        setLiveQuoteKey(`${isBuy ? "b" : "s"}:${amount}`);
         setLiveQuote(Number(q) / (isBuy ? 1e18 : 1e6));
       } catch {
-        if (!cancelled) setLiveQuote(null);
+        if (!cancelled) {
+          setLiveQuote(null);
+          setLiveQuoteRaw(null);
+          setLiveQuoteKey("");
+        }
       } finally {
         if (!cancelled) setQuoteLoading(false);
       }
@@ -262,8 +274,16 @@ export default function TokenDetailPage() {
         : BigInt(Math.round(amt * 1e18)); // token 18 decimals
 
       // 1.5% fee -> minOut = quote * (1 - 1.5% - slippage 2%)
-      setSwapStatus("quoting");
-      const quote = await quoteSwap(tokenIn, tokenOut, amountIn, poolFee);
+      // Reuse the auto-quote when it covers this exact input (avoids a second
+      // slow RPC round-trip — the "Quoting…" hang users saw on mobile).
+      const quoteKey = `${isBuy ? "b" : "s"}:${amount}`;
+      let quote: bigint;
+      if (liveQuoteRaw !== null && liveQuoteKey === quoteKey) {
+        quote = liveQuoteRaw;
+      } else {
+        setSwapStatus("quoting");
+        quote = await quoteSwap(tokenIn, tokenOut, amountIn, poolFee);
+      }
       const minOut = (quote * 9650n) / 10000n; // 3.5% total buffer
 
       // approve only the input token, and only if the current allowance is
