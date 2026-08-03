@@ -23,7 +23,7 @@ import {
   type Address,
 } from "@/lib/swap";
 import { parseUnits, parseAbi, decodeEventLog } from "viem";
-import { CircleNotch, ArrowUpRight, Coins } from "@phosphor-icons/react";
+import { CircleNotch, ArrowUpRight, Coins, LockSimple } from "@phosphor-icons/react";
 
 const LAUNCH_EVENT_ABI = parseAbi([
   "event TokenLaunched(address indexed token, address indexed creator, string name, string symbol, uint256 supply, uint256 startingPrice, uint8 bondingType)",
@@ -46,9 +46,13 @@ export default function LaunchPage() {
   const [creatorWallet, setCreatorWallet] = useState("");
   const [xHandle, setXHandle] = useState("");
   const [initialBuy, setInitialBuy] = useState("");
-  const [supply, setSupply] = useState("1000000000"); // 1B default
-  const [startingPrice, setStartingPrice] = useState("0.000002"); // ~$200 → 0.00000200 USDC
-  const [graduationUsdc, setGraduationUsdc] = useState("4000"); // Flap.sh model: 80% of 1B supply sold on curve → 2.5 × p0 × 0.8B = $4,000; remaining 20% + USDC → locked pool
+  // Fixed launch parameters — locked defaults, not editable. Every token
+  // launches with the same curve: 1B supply, $0.000002 starting price,
+  // $4,000 graduation = 80% of supply sold on the curve, remaining 20% +
+  // USDC added to the pool and locked (Flap.sh model).
+  const SUPPLY = "1000000000"; // 1B
+  const STARTING_PRICE = "0.000002"; // ~$200 → 0.00000200 USDC
+  const GRADUATION_USDC = "4000"; // 80% of 1B supply @ p0 → 2.5 × p0 × 0.8B = $4,000
   const [whitelist, setWhitelist] = useState("");
 
   const [launchStatus, setLaunchStatus] = useState<LaunchStatus>("idle");
@@ -68,14 +72,13 @@ export default function LaunchPage() {
 
   // Live curve preview — mirrors the on-chain math:
   //   price = p0 × (1 + 3·s/T)  →  USDC collected at T = 2.5 × p0 × T
-  const supplyTokens = Math.max(0, Number(supply) || 0);
-  const p0Usdc = Math.max(0, Number(startingPrice) || 0);
-  const targetUsdc = Math.max(0, Number(graduationUsdc) || 0);
+  const supplyTokens = Math.max(0, Number(SUPPLY) || 0);
+  const p0Usdc = Math.max(0, Number(STARTING_PRICE) || 0);
+  const targetUsdc = Math.max(0, Number(GRADUATION_USDC) || 0);
   const maxCollectedUsdc = 2.5 * p0Usdc * supplyTokens;
   const thresholdTokens = p0Usdc > 0 ? Math.min(supplyTokens, targetUsdc / (2.5 * p0Usdc)) : 0;
   const pctSold = supplyTokens > 0 ? (thresholdTokens / supplyTokens) * 100 : 0;
   const finalPriceUsdc = 4 * p0Usdc;
-  const targetReachable = maxCollectedUsdc >= targetUsdc;
 
   function parseWhitelist(): Address[] {
     return whitelist
@@ -112,8 +115,8 @@ export default function LaunchPage() {
     try {
       setLaunchStatus("signing");
 
-      const supplyNum = parseUnits(supply || "1000000000", 18);
-      const priceNum = parseUnits(startingPrice || "0.000002", 6);
+      const supplyNum = parseUnits(SUPPLY, 18);
+      const priceNum = parseUnits(STARTING_PRICE, 6);
       if (priceNum <= 0n) {
         setLaunchError("Starting price must be greater than 0 — the on-chain curve requires it.");
         setLaunchStatus("error");
@@ -123,7 +126,7 @@ export default function LaunchPage() {
       //   price = p0 × (1 + 3·s/T)  →  USDC collected at full threshold = 2.5 × p0 × T
       // so the token threshold for a USDC target is  T = target × 1e19 / (25 × p0)
       // (target in 6-dec USDC units, p0 in 6-dec USDC units).
-      const targetUsdc6 = BigInt(Math.max(0, Math.round((Number(graduationUsdc) || 0) * 1e6)));
+      const targetUsdc6 = BigInt(Math.max(0, Math.round(Number(GRADUATION_USDC) * 1e6)));
       if (targetUsdc6 <= 0n) {
         setLaunchError("Graduation liquidity must be greater than 0 USDC.");
         setLaunchStatus("error");
@@ -416,50 +419,42 @@ export default function LaunchPage() {
               collected by the curve, and the liquidity locks permanently.
             </p>
             <div className="mt-4 grid gap-5 sm:grid-cols-3">
-              <label className="block">
-                <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
+              <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5">
+                <span className="mb-1.5 flex items-center gap-1.5 font-mono text-xs text-[var(--text-2)]">
                   Supply (tokens)
+                  <LockSimple size={11} className="text-[var(--accent)]" />
                 </span>
-                <input
-                  value={supply}
-                  onChange={(e) => setSupply(e.target.value)}
-                  inputMode="numeric"
-                  className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
-                />
-                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
-                  Default 1,000,000,000 (1B)
+                <p className="font-mono text-sm font-semibold text-[var(--text)]">
+                  {Number(SUPPLY).toLocaleString()}
                 </p>
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
+                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+                  Fixed default — 1B
+                </p>
+              </div>
+              <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5">
+                <span className="mb-1.5 flex items-center gap-1.5 font-mono text-xs text-[var(--text-2)]">
                   Starting price (USDC)
+                  <LockSimple size={11} className="text-[var(--accent)]" />
                 </span>
-                <input
-                  value={startingPrice}
-                  onChange={(e) => setStartingPrice(e.target.value)}
-                  inputMode="decimal"
-                  min="0"
-                  className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
-                />
-                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
-                  Min 0 — on-chain curve requires &gt; 0. Rises to 4× at graduation.
+                <p className="font-mono text-sm font-semibold text-[var(--text)]">
+                  {STARTING_PRICE}
                 </p>
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
+                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+                  Fixed default — rises to 4× at graduation
+                </p>
+              </div>
+              <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5">
+                <span className="mb-1.5 flex items-center gap-1.5 font-mono text-xs text-[var(--text-2)]">
                   Graduation at (USDC liquidity)
+                  <LockSimple size={11} className="text-[var(--accent)]" />
                 </span>
-                <input
-                  value={graduationUsdc}
-                  onChange={(e) => setGraduationUsdc(e.target.value)}
-                  inputMode="decimal"
-                  className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
-                />
-                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
-                  80% of supply sells on the curve at this target — the remaining
-                  20% + this USDC is added to the pool and locked.
+                <p className="font-mono text-sm font-semibold text-[var(--text)]">
+                  {Number(GRADUATION_USDC).toLocaleString()}
                 </p>
-              </label>
+                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+                  Fixed default — 80% of supply sells, remaining 20% + USDC locked
+                </p>
+              </div>
             </div>
 
             {/* Live curve preview */}
@@ -502,15 +497,6 @@ export default function LaunchPage() {
                   the curve → added to the Arcodex DEX pool and locked permanently.
                 </p>
               </div>
-              {p0Usdc > 0 && !targetReachable && (
-                <p className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 font-mono text-[10px] text-amber-300 sm:col-span-3">
-                  ⚠️ Graduation target ${targetUsdc.toLocaleString()} exceeds the max
-                  the curve can collect at this starting price (
-                  ${maxCollectedUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} at full
-                  sale) — it will graduate at 100% sold instead. Raise the starting price
-                  or lower the target.
-                </p>
-              )}
               {p0Usdc === 0 && (
                 <p className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 font-mono text-[10px] text-amber-300 sm:col-span-3">
                   ⚠️ Starting price 0 makes the curve collect no USDC — it can never
