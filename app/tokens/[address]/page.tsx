@@ -264,7 +264,7 @@ export default function TokenDetailPage() {
     // Bonding-curve tokens that haven't graduated have no AMM pool yet —
     // give a clear message instead of a raw contract revert.
     if (!token.poolAddress) {
-      setSwapError("This token is still on its bonding curve. Trading via AMM opens once it graduates (100% sold).");
+      setSwapError("This token is still on its bonding curve. Trading via AMM opens once it graduates — liquidity then locks on the Arcodex DEX.");
       setSwapStatus("error");
       return;
     }

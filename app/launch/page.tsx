@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import BondingBadge from "@/components/BondingBadge";
-import { BONDING_TYPES, CHAIN } from "@/lib/mockData";
+import { BONDING_TYPES, CHAIN, formatUsdc } from "@/lib/mockData";
 import { BondingType } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
 import { useWallet } from "@/lib/wallet";
@@ -46,9 +46,9 @@ export default function LaunchPage() {
   const [creatorWallet, setCreatorWallet] = useState("");
   const [xHandle, setXHandle] = useState("");
   const [initialBuy, setInitialBuy] = useState("");
-  const [supply, setSupply] = useState("1000000000");
-  const [startingPrice, setStartingPrice] = useState("0.000001");
-  const [graduationPct, setGraduationPct] = useState("100");
+  const [supply, setSupply] = useState("1000000000"); // 1B default
+  const [startingPrice, setStartingPrice] = useState("0.000002"); // ~$200 → 0.00000200 USDC
+  const [graduationUsdc, setGraduationUsdc] = useState("3500"); // graduate at $3,500 liquidity
   const [whitelist, setWhitelist] = useState("");
 
   const [launchStatus, setLaunchStatus] = useState<LaunchStatus>("idle");
@@ -65,6 +65,17 @@ export default function LaunchPage() {
   const creatorPct = (Number(LAUNCH_FEE_BPS) * Number(LAUNCH_CREATOR_SHARE_BPS)) / 10000;
   const platformPct = (Number(LAUNCH_FEE_BPS) * Number(LAUNCH_PLATFORM_SHARE_BPS)) / 10000;
   const holderPct = (Number(LAUNCH_FEE_BPS) * Number(LAUNCH_HOLDER_SHARE_BPS)) / 10000;
+
+  // Live curve preview — mirrors the on-chain math:
+  //   price = p0 × (1 + 3·s/T)  →  USDC collected at T = 2.5 × p0 × T
+  const supplyTokens = Math.max(0, Number(supply) || 0);
+  const p0Usdc = Math.max(0, Number(startingPrice) || 0);
+  const targetUsdc = Math.max(0, Number(graduationUsdc) || 0);
+  const maxCollectedUsdc = 2.5 * p0Usdc * supplyTokens;
+  const thresholdTokens = p0Usdc > 0 ? Math.min(supplyTokens, targetUsdc / (2.5 * p0Usdc)) : 0;
+  const pctSold = supplyTokens > 0 ? (thresholdTokens / supplyTokens) * 100 : 0;
+  const finalPriceUsdc = 4 * p0Usdc;
+  const targetReachable = maxCollectedUsdc >= targetUsdc;
 
   function parseWhitelist(): Address[] {
     return whitelist
@@ -102,9 +113,26 @@ export default function LaunchPage() {
       setLaunchStatus("signing");
 
       const supplyNum = parseUnits(supply || "1000000000", 18);
-      const priceNum = parseUnits(startingPrice || "0.000001", 6);
-      const pct = Math.min(100, Math.max(1, Number(graduationPct) || 100));
-      const threshold = (supplyNum * BigInt(Math.round(pct * 100))) / 10000n; // pct % of supply
+      const priceNum = parseUnits(startingPrice || "0.000002", 6);
+      if (priceNum <= 0n) {
+        setLaunchError("Starting price must be greater than 0 — the on-chain curve requires it.");
+        setLaunchStatus("error");
+        return;
+      }
+      // Graduate at a USDC-liquidity target. Contract curve:
+      //   price = p0 × (1 + 3·s/T)  →  USDC collected at full threshold = 2.5 × p0 × T
+      // so the token threshold for a USDC target is  T = target × 1e19 / (25 × p0)
+      // (target in 6-dec USDC units, p0 in 6-dec USDC units).
+      const targetUsdc6 = BigInt(Math.max(0, Math.round((Number(graduationUsdc) || 0) * 1e6)));
+      if (targetUsdc6 <= 0n) {
+        setLaunchError("Graduation liquidity must be greater than 0 USDC.");
+        setLaunchStatus("error");
+        return;
+      }
+      let threshold = (targetUsdc6 * 10n ** 19n) / (25n * priceNum);
+      if (threshold > supplyNum) {
+        threshold = supplyNum; // target unreachable at this price — curve sells to 100%
+      }
       const whitelistArr = parseWhitelist();
       const feeWallet: Address =
         (creatorWallet.trim() as Address) && /^0x[a-fA-F0-9]{40}$/.test(creatorWallet.trim())
@@ -382,7 +410,9 @@ export default function LaunchPage() {
               Bonding curve parameters
             </p>
             <p className="mt-1 font-mono text-[11px] text-[var(--text-2)]/80">
-              Linear curve: price = startingPrice × (1 + sold / threshold).
+              Linear curve: price starts at the starting price and rises 4× as the
+              curve bonds. When collected liquidity hits the graduation target, the
+              curve graduates and the pool locks on the Arcodex DEX.
             </p>
             <div className="mt-4 grid gap-5 sm:grid-cols-3">
               <label className="block">
@@ -395,6 +425,9 @@ export default function LaunchPage() {
                   inputMode="numeric"
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
                 />
+                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+                  Default 1,000,000,000 (1B)
+                </p>
               </label>
               <label className="block">
                 <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
@@ -404,20 +437,73 @@ export default function LaunchPage() {
                   value={startingPrice}
                   onChange={(e) => setStartingPrice(e.target.value)}
                   inputMode="decimal"
+                  min="0"
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
                 />
+                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+                  Min 0 — on-chain curve requires &gt; 0. Rises to 4× at graduation.
+                </p>
               </label>
               <label className="block">
                 <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
-                  Graduation at (% sold)
+                  Graduation at (USDC liquidity)
                 </span>
                 <input
-                  value={graduationPct}
-                  onChange={(e) => setGraduationPct(e.target.value)}
-                  inputMode="numeric"
+                  value={graduationUsdc}
+                  onChange={(e) => setGraduationUsdc(e.target.value)}
+                  inputMode="decimal"
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
                 />
+                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+                  Pool locks on the Arcodex DEX at this amount.
+                </p>
               </label>
+            </div>
+
+            {/* Live curve preview */}
+            <div className="mt-4 grid gap-3 rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 sm:grid-cols-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                  Launch mcap
+                </p>
+                <p className="mt-0.5 font-mono text-sm font-semibold text-[var(--text)]">
+                  {formatUsdc(supplyTokens * p0Usdc)}
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                  Sold at graduation
+                </p>
+                <p className="mt-0.5 font-mono text-sm font-semibold text-[var(--text)]">
+                  {pctSold >= 99.99 ? "100%" : pctSold.toFixed(1) + "%"}
+                  <span className="ml-1 font-mono text-[10px] font-normal text-[var(--text-2)]/70">
+                    ({Math.round(thresholdTokens).toLocaleString()} tokens)
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                  Final price
+                </p>
+                <p className="mt-0.5 font-mono text-sm font-semibold text-[var(--text)]">
+                  {formatUsdc(finalPriceUsdc, 8)}
+                </p>
+              </div>
+              {p0Usdc > 0 && !targetReachable && (
+                <p className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 font-mono text-[10px] text-amber-300 sm:col-span-3">
+                  ⚠️ Graduation target ${targetUsdc.toLocaleString()} exceeds the max
+                  the curve can collect at this starting price (
+                  ${maxCollectedUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} at full
+                  sale) — it will graduate at 100% sold instead. Raise the starting price
+                  or lower the target.
+                </p>
+              )}
+              {p0Usdc === 0 && (
+                <p className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 font-mono text-[10px] text-amber-300 sm:col-span-3">
+                  ⚠️ Starting price 0 makes the curve collect no USDC — it can never
+                  graduate. The on-chain curve requires a price above 0.
+                </p>
+              )}
             </div>
           </div>
 
