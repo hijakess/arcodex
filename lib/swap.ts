@@ -15,7 +15,7 @@ export const ARC_CHAIN = {
   id: 5042,
   name: "Arc",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: { default: { http: ["https://fortest-production-9a201.up.railway.app"] } },
+  rpcUrls: { default: { http: ["https://arcanine.lol/api/rpc"] } },
 } as const;
 
 // Deployed contracts (Arc mainnet)

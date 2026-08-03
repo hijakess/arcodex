@@ -16,12 +16,12 @@ import {
 
 export const ARC_CHAIN_ID = 5042;
 export const ARC_CHAIN_HEX = "0x13b2";
-// Currently online Arc public RPCs. Railway is primary (verified broadcast in
-// real swaps); arcanine is listed second so wallets auto-fallback when Railway
-// rate-limits the user's IP (per-IP limits are the classic "network error" on
-// tx broadcast).
-export const ARC_CHAIN_RPC = "https://fortest-production-9a201.up.railway.app";
-export const ARC_CHAIN_RPC_ALT = "https://arcanine.lol/api/rpc";
+// RPC priority for the wallet "Add Chain" button (benchmarked live:
+// arcanine ~0.2-0.9s, Railway ~5.5-7s and intermittently "upstream rate
+// limited" — that per-IP limiting is what caused users' "network error" on
+// tx broadcast). arcanine is primary; Railway stays as fallback.
+export const ARC_CHAIN_RPC = "https://arcanine.lol/api/rpc";
+export const ARC_CHAIN_RPC_ALT = "https://fortest-production-9a201.up.railway.app";
 export const ARC_CHAIN_EXPLORER = "https://arc.blockscout.com";
 
 export const ARC_CHAIN_PARAMS = {
