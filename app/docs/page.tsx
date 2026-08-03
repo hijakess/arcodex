@@ -12,7 +12,7 @@ const DOCS: Record<string, { title: string; body: string }> = {
 
 ## Abstract
 
-Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset**. Tokens launch on a bonding curve with a **1% trading fee split 0.8% to the creator and 0.2% to the platform**. Swapping existing tokens costs a flat **1.5% fee (100% platform)**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
+Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset**. Tokens launch on a bonding curve with a **1% trading fee split 0.7% creator · 0.2% platform · 0.1% holder dividends**. Swapping existing tokens costs a flat **1.5% fee (100% platform)**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
 
 ## 1. Problem
 
@@ -24,7 +24,7 @@ Arcodex provides:
 
 - One-click token launch with two bonding types (Standard, Early Buy)
 - Native USDC pricing everywhere - no ETH/WETH conversions
-- Fixed 1.5% swap fee on existing tokens (100% platform) + 1% launch fee (0.8% creator / 0.2% platform)
+- Fixed 1.5% swap fee on existing tokens (100% platform) + 1% launch fee (0.7% creator / 0.2% platform / 0.1% holder dividends)
 - Unified token index across all Arc launchpads with instant swap
 - Bridge for moving USDC onto Arc
 - Liquidity pools for post-graduation trading
@@ -48,12 +48,13 @@ Tokens launch on a linear bonding curve: price = startingPrice * (1 + sold / gra
 
 Two fee models:
 
-**Launch tokens (bonding curve + pool) — 1%** per trade, split 80/20:
+**Launch tokens (bonding curve + pool) — 1%** per trade, split 70/20/10:
 
 | Party | Share | Effective rate |
 |-------|-------|----------------|
-| Creator | 80% of fee | 0.80% |
+| Creator | 70% of fee | 0.70% |
 | Platform | 20% of fee | 0.20% |
+| Holders | 10% of fee | 0.10% (USDC dividends) |
 
 **Swap existing tokens (ArcodexFeeRouter) — 1.5%** per trade, 100% to the platform:
 
@@ -62,7 +63,7 @@ Two fee models:
 | Platform | 100% of fee | 1.50% |
 | Creator | 0% | 0.00% |
 
-Fees accrue on-chain in USDC. Creators claim their share from their profile; the platform claims to a treasury wallet.
+Fees accrue on-chain in USDC. Creators claim their share from their profile; the platform claims to a treasury wallet; **token holders claim dividends pro-rata to their balance** (fee-reflection pattern) — 10% of every launch-token trade goes to a USDC dividend pool for holders.
 
 ## 5. Architecture
 
@@ -71,10 +72,10 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) -> Arcodex API/Indexer -> 
 ## 6. Token Lifecycle
 
 1. Launch - creator deploys token with metadata (name, symbol, description, website, socials)
-2. Bonding - traders buy/sell against the curve in USDC; 1% fee accrues (0.8% creator / 0.2% platform)
+2. Bonding - traders buy/sell against the curve in USDC; 1% fee accrues (0.7% creator / 0.2% platform / 0.1% holder dividends)
 3. Graduation - at 100% curve sold, liquidity migrates to a full AMM pool
-4. Trading - post-graduation, token trades freely on the AMM with the same 0.8% / 0.2% split
-5. Claim - creator claims 0.8%; platform claims 0.2%
+4. Trading - post-graduation, token trades freely on the AMM with the same 0.7% / 0.2% / 0.1% split
+5. Claim - creator claims 0.7%; platform claims 0.2%; holders claim 0.1% pro-rata
 
 ## 7. Security
 
@@ -89,8 +90,9 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) -> Arcodex API/Indexer -> 
 | Item | Value |
 |------|-------|
 | Trading fee (launch tokens) | 1.00% fixed |
-| Creator share | 80% of launch fee (0.80%) |
+| Creator share | 70% of launch fee (0.70%) |
 | Platform share | 20% of launch fee (0.20%) |
+| Holder dividends | 10% of launch fee (0.10%) |
 | Swap fee (existing tokens) | 1.50% fixed, 100% platform |
 | Price currency | USDC (native) |
 | Curve graduation | 100% of bonding supply |
@@ -114,12 +116,12 @@ Arcodex is a protocol for launching and trading community tokens. Tokens launche
 
 | Contract | Address | Fee |
 |----------|---------|-----|
-| ArcodexBondingCurve | \`0x7D7184cB91d8c7b1bb4FF92CAA19707aCfCa67e3\` | 1% (launch tokens, 0.8% creator / 0.2% platform) |
+| ArcodexBondingCurve | \`0xfe4CEf26Ab54581868A3D727e7bc72CC4AabD324\` | 1% (launch tokens, 0.7% creator / 0.2% platform / 0.1% holder) |
 | ArcodexFeeRouter | \`0x8FcA8fB88337BdedA54AA28227E1294923f5ca52\` | 1.5% (swap existing tokens, 100% platform) |
 | USDC (quote) | \`0x3600000000000000000000000000000000000000\` | — |
-| ArcodexPool | deployed per-token at graduation | 1% (0.8% creator / 0.2% platform) |
+| ArcodexPool | deployed per-token at graduation | 1% (0.7% creator / 0.2% platform / 0.1% holder) |
 
-Bonding curve deploy TX: \`0x6ef486343892f042e3d4456eac76f4eaebe95bf01df54141f053394b939da07f\`
+Bonding curve deploy TX: \`0x1e6b029610dac831e348c3f259e721f22dded9a928b9fcde6e875227c9561fd5\`
 Fee router deploy TX: \`0xf2658709884ca825df9e61658ddf33febff3bfdcfd38f525dba612a2ae3544f7\`
 
 ## Fee Model
@@ -127,10 +129,11 @@ Fee router deploy TX: \`0xf2658709884ca825df9e61658ddf33febff3bfdcfd38f525dba612
 Two fee models:
 
 \`\`\`
-# Launch tokens (bonding curve + pool): 1.0% -> 0.8% creator / 0.2% platform
+# Launch tokens (bonding curve + pool): 1.0% -> 0.7% creator / 0.2% platform / 0.1% holder
 FEE_BPS = 100
-CREATOR_SHARE_BPS = 8000  # 80% -> creator (0.80%)
+CREATOR_SHARE_BPS = 7000  # 70% -> creator (0.70%)
 PLATFORM_SHARE_BPS = 2000 # 20% -> platform (0.20%)
+HOLDER_SHARE_BPS = 1000   # 10% -> holder dividend pool (0.10%)
 
 # Swap of existing tokens (ArcodexFeeRouter): 1.5% -> 100% platform
 FEE_BPS = 150
@@ -151,10 +154,12 @@ The factory + exchange contract for Arcodex. Every token launch creates a Bondin
 | Function | Description |
 |----------|-------------|
 | launchToken(...) | Deploys token, registers metadata + socials + whitelist, seeds curve |
-| buy(token, usdcIn) | Buy curve tokens with USDC, 1% fee split 80/20 |
-| sell(token, tokensIn) | Sell curve tokens for USDC, 1% fee split 80/20 |
-| claimCreatorFees(token) | Creator claims accrued 80% share |
+| buy(token, usdcIn) | Buy curve tokens with USDC, 1% fee split 70/20/10 |
+| sell(token, tokensIn) | Sell curve tokens for USDC, 1% fee split 70/20/10 |
+| claimCreatorFees(token) | Creator claims accrued 70% share |
 | claimPlatformFees(token) | Owner claims accrued 20% share |
+| claimHolderRewards(token) | Holder claims USDC dividends (10% of fees) pro-rata to balance |
+| pendingHolderRewards(token, holder) | View pending holder dividends for a wallet |
 | graduate(token) | Deploys ArcodexPool, migrates fully-sold curve to AMM pool |
 | priceToTokens(token, usdcIn) | Quote: USDC -> tokens |
 | tokensToPrice(token, tokensIn) | Quote: tokens -> USDC |
@@ -170,7 +175,7 @@ Atomic 1-tx fee router for tokens that already have DEX liquidity on Arc (e.g. R
 
 Source: contracts/ArcodexPool.sol
 
-Constant-product pool (token <-> USDC) deployed at graduation. Same 1% fee split 80/20 as the bonding curve, charged in the output asset. Supports swapUsdcIn / swapTokenIn, addLiquidity / removeLiquidity with LP tokens, and claimable creator/platform fees.
+Constant-product pool (token <-> USDC) deployed at graduation. Same 1% fee split 70/20/10 as the bonding curve (0.7% creator / 0.2% platform / 0.1% holder dividends), charged once in USDC terms. Supports swapUsdcIn / swapTokenIn, addLiquidity / removeLiquidity with LP tokens, and claimable creator/platform fees + holder dividends.
 
 ## Curve Formula
 

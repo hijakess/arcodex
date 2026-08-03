@@ -58,7 +58,7 @@ arc-launchpad/
 - **Theme:** Dark, crypto-native. Off-black background, cyan accent (`#22d3ee`).
 - **Typography:** Geist Sans + Geist Mono (mono for data/numbers).
 - **Currency:** USDC everywhere (Arc native asset).
-- **Fee model:** 1% fixed, 80% creator / 20% platform.
+- **Fee model:** 1% fixed: 0.7% creator / 0.2% platform / 0.1% holder dividends.
 - **Bonding types:** Standard, Early Buy.
 
 ## Data Flow

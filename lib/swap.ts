@@ -18,7 +18,7 @@ export const ARC_CHAIN = {
 } as const;
 
 // Deployed contracts (Arc mainnet)
-export const ARCODEX_BONDING = "0x7D7184cB91d8c7b1bb4FF92CAA19707aCfCa67e3" as Address;
+export const ARCODEX_BONDING = "0xfe4CEf26Ab54581868A3D727e7bc72CC4AabD324" as Address;
 export const ARCODEX_FEE_ROUTER = "0x8FcA8fB88337BdedA54AA28227E1294923f5ca52" as Address;
 export const USDC = "0x3600000000000000000000000000000000000000" as Address;
 export const SWAP_ROUTER = "0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77" as Address;
@@ -29,10 +29,12 @@ export const FEE_BPS = 150n;
 export const CREATOR_SHARE_BPS = 0n;
 export const PLATFORM_SHARE_BPS = 10000n;
 
-// Newly launched tokens (bonding curve): 1.0% fee, split 80/20 (0.8% / 0.2%)
+// Newly launched tokens (bonding curve + pool): 1.0% fee, split 70/20/10
+// (0.7% creator / 0.2% platform / 0.1% holder dividends - Plan A)
 export const LAUNCH_FEE_BPS = 100n;
-export const LAUNCH_CREATOR_SHARE_BPS = 8000n;
+export const LAUNCH_CREATOR_SHARE_BPS = 7000n;
 export const LAUNCH_PLATFORM_SHARE_BPS = 2000n;
+export const LAUNCH_HOLDER_SHARE_BPS = 1000n;
 
 // ---- ABIs (minimal, matching deployed contracts) ----
 
@@ -139,4 +141,120 @@ export async function approveToken(
     account,
   });
   return client.writeContract(request);
+}
+
+// ---- Bonding curve (launch tokens) ----
+
+export const BONDING_ABI = [
+  "function launchToken(string name, string symbol, string description, string website, string twitter, string telegram, string discord, uint256 supply, uint256 startingPrice, uint256 graduationThreshold, address creatorFeeWallet, uint8 bondingType, address[] whitelist) returns (address token)",
+  "function buy(address token, uint256 usdcIn)",
+  "function sell(address token, uint256 tokensIn)",
+  "function tokens(address) view returns (address token, address creator, address creatorFeeWallet, string name, string symbol, string website, string twitter, string telegram, string discord, uint256 supply, uint256 startingPrice, uint256 graduationThreshold, uint256 sold, uint256 totalCollected, uint256 creatorClaimable, uint256 platformClaimable, uint8 bondingType, bool graduated, address pool)",
+  "function pendingHolderRewards(address token, address holder) view returns (uint256)",
+  "function claimHolderRewards(address token)",
+  "function holderRewardPool(address) view returns (uint256)",
+  "function accRewardPerShare(address) view returns (uint256)",
+  "function claimedHolderRewards(address,address) view returns (uint256)",
+  "function FEE_BPS() view returns (uint256)",
+  "function CREATOR_SHARE_BPS() view returns (uint256)",
+  "function PLATFORM_SHARE_BPS() view returns (uint256)",
+  "function HOLDER_SHARE_BPS() view returns (uint256)",
+] as const;
+
+export interface LaunchParams {
+  name: string;
+  symbol: string;
+  description: string;
+  website: string;
+  twitter: string;
+  telegram: string;
+  discord: string;
+  supply: bigint; // token 18 decimals
+  startingPrice: bigint; // USDC per token, 6 decimals
+  graduationThreshold: bigint; // token units
+  creatorFeeWallet: Address;
+  bondingType: 0 | 1; // 0 = standard, 1 = early buy
+  whitelist: Address[];
+}
+
+/** Launch a token on the bonding curve (gas paid in native USDC). */
+export async function launchToken(
+  provider: unknown,
+  account: Address,
+  p: LaunchParams
+): Promise<{ txHash: Hex; tokenAddress?: Address }> {
+  const client = walletClient(provider);
+  const { request } = await publicClient().simulateContract({
+    address: ARCODEX_BONDING,
+    abi: BONDING_ABI,
+    functionName: "launchToken",
+    args: [
+      p.name,
+      p.symbol,
+      p.description,
+      p.website,
+      p.twitter,
+      p.telegram,
+      p.discord,
+      p.supply,
+      p.startingPrice,
+      p.graduationThreshold,
+      p.creatorFeeWallet,
+      p.bondingType,
+      p.whitelist,
+    ],
+    account,
+  });
+  const txHash = await client.writeContract(request);
+  return { txHash };
+}
+
+/** Claim holder dividends (USDC) for a launched token. */
+export async function claimHolderRewards(
+  provider: unknown,
+  account: Address,
+  token: Address
+): Promise<Hex> {
+  const client = walletClient(provider);
+  const { request } = await publicClient().simulateContract({
+    address: ARCODEX_BONDING,
+    abi: BONDING_ABI,
+    functionName: "claimHolderRewards",
+    args: [token],
+    account,
+  });
+  return client.writeContract(request);
+}
+
+/** Pending holder dividends (USDC) for a wallet on a launched token. */
+export async function getPendingHolderRewards(
+  token: Address,
+  holder: Address
+): Promise<bigint> {
+  const client = publicClient();
+  const r = await client.readContract({
+    address: ARCODEX_BONDING,
+    abi: BONDING_ABI,
+    functionName: "pendingHolderRewards",
+    args: [token, holder],
+  });
+  return BigInt(r as bigint);
+}
+
+/** Check whether a token was launched on the Arcodex bonding curve. */
+export async function isArcodexToken(token: Address): Promise<boolean> {
+  const client = publicClient();
+  try {
+    const info = await client.readContract({
+      address: ARCODEX_BONDING,
+      abi: BONDING_ABI,
+      functionName: "tokens",
+      args: [token],
+    });
+    const arr = info as readonly unknown[];
+    // token field (index 0) is zero when not launched here
+    return arr[0] !== "0x0000000000000000000000000000000000000000";
+  } catch {
+    return false;
+  }
 }

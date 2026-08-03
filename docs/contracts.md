@@ -16,7 +16,8 @@ curve priced in USDC (native asset of Arc).
 
 ```
 FEE_BPS = 100            # 1.00% total
-CREATOR_SHARE_BPS = 8000 # 80% of fee -> creator (0.80%)
+CREATOR_SHARE_BPS = 7000 # 70% of fee -> creator (0.70%)
+HOLDER_SHARE_BPS = 1000   # 10% of fee -> holder dividends (0.10%)
 PLATFORM_SHARE_BPS = 2000# 20% of fee -> platform (0.20%)
 ```
 

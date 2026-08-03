@@ -11,15 +11,16 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  * @notice Constant-product AMM pool (token <-> USDC) for graduated Arcodex
  *         tokens. Deployed by the bonding curve at graduation.
  *
- * Fee model (per user request — LAUNCH tokens, post-graduation)
- * ---------------------------------------------------------------
- *   fee = 1.0% of swap notional
- *   creator share = 80% of fee  (0.8%)
+ * Fee model (LAUNCH tokens, post-graduation)
+ * -------------------------------------------
+ *   fee = 1.0% of swap notional, charged once in the OUTPUT asset
+ *   creator share = 70% of fee (0.7%)
  *   platform share = 20% of fee (0.2%)
+ *   holder share  = 10% of fee (0.1%) -> USDC dividend pool for token
+ *   holders, claimable pro-rata to balance (fee-reflection pattern).
  *
- * The fee is charged in the OUTPUT asset (standard constant-product AMM
- * style: reserves grow, LP value appreciates). Creator & platform shares are
- * accounted separately and claimable on-chain.
+ * Fees are accounted in USDC terms (buys skim USDC in, sells skim USDC out)
+ * so creator / platform / holder claims are all paid in USDC.
  *
  * @custom:security-contact https://arcodex.app
  */
@@ -29,8 +30,10 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
     /* ============ Constants ============ */
 
     uint256 public constant FEE_BPS = 100; // 1.00% total fee
-    uint256 public constant CREATOR_SHARE_BPS = 8000; // 80% of fee
+    uint256 public constant CREATOR_SHARE_BPS = 7000; // 70% of fee
     uint256 public constant PLATFORM_SHARE_BPS = 2000; // 20% of fee
+    uint256 public constant HOLDER_SHARE_BPS = 1000; // 10% of fee -> holder dividends
+    uint256 public constant REWARD_SCALE = 1e18; // precision for dividend accumulator
     uint256 public constant BPS = 10_000;
 
     /* ============ State ============ */
@@ -46,6 +49,13 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
 
     uint256 public creatorClaimable;
     uint256 public platformClaimable;
+
+    /// @notice USDC dividend pool accrued for token holders (10% of fees).
+    uint256 public holderRewardPool;
+    /// @notice Scaled reward accumulator (REWARD_SCALE precision).
+    uint256 public accRewardPerShare;
+    /// @notice Already-claimed dividends per holder.
+    mapping(address => uint256) public claimedHolderRewards;
 
     // LP token (minimal ERC20 minted/burned by this pool)
     string public constant name = "Arcodex LP";
@@ -63,6 +73,7 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
     event LiquidityAdded(address indexed provider, uint256 tokenAmount, uint256 usdcAmount, uint256 lpMinted);
     event LiquidityRemoved(address indexed provider, uint256 tokenAmount, uint256 usdcAmount, uint256 lpBurned);
     event FeesClaimed(address indexed claimer, uint256 amount);
+    event HolderRewardsClaimed(address indexed holder, uint256 amount);
 
     /* ============ Constructor ============ */
 
@@ -92,20 +103,18 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
 
     /**
      * @notice Swap USDC -> token (buy).
-     * @dev 1.0% fee charged in tokens (output asset). Standard x*y=k with fee.
+     * @dev 1.0% fee charged once on the USDC input. Standard x*y=k with fee.
      */
     function swapUsdcIn(uint256 usdcIn, uint256 minTokensOut) external nonReentrant returns (uint256 tokensOut) {
         require(usdcIn > 0, "in=0");
         uint256 fee = (usdcIn * FEE_BPS) / BPS;
         uint256 net = usdcIn - fee;
 
-        uint256 tokensOutBefore = (net * reserveToken) / (reserveUsdc + net);
-        // charge the fee in output asset: 1.0% of the token amount
-        tokensOut = tokensOutBefore - (tokensOutBefore * FEE_BPS) / BPS;
+        tokensOut = (net * reserveToken) / (reserveUsdc + net);
         require(tokensOut > 0, "out=0");
         require(tokensOut >= minTokensOut, "slippage");
 
-        _accrueFee(tokensOutBefore * FEE_BPS / BPS);
+        _accrueFee(fee);
 
         reserveUsdc += usdcIn;
         reserveToken -= tokensOut;
@@ -143,10 +152,42 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
     /* ============ Fees ============ */
 
     function _accrueFee(uint256 fee) internal {
-        uint256 creatorShare = (fee * CREATOR_SHARE_BPS) / BPS;
-        uint256 platformShare = fee - creatorShare;
+        uint256 creatorShare = (fee * CREATOR_SHARE_BPS) / BPS; // 70%
+        uint256 platformShare = (fee * PLATFORM_SHARE_BPS) / BPS; // 20%
+        uint256 holderShare = fee - creatorShare - platformShare; // 10% remainder
         creatorClaimable += creatorShare;
         platformClaimable += platformShare;
+        if (holderShare > 0) {
+            uint256 supply = token.totalSupply();
+            if (supply > 0) {
+                accRewardPerShare += (holderShare * REWARD_SCALE) / supply;
+                holderRewardPool += holderShare;
+            } else {
+                platformClaimable += holderShare; // no holders -> platform
+            }
+        }
+    }
+
+    /**
+     * @notice Pending holder dividend (USDC) for a wallet, pro-rata to balance.
+     */
+    function pendingHolderRewards(address holder) public view returns (uint256) {
+        uint256 bal = token.balanceOf(holder);
+        uint256 earned = (bal * accRewardPerShare) / REWARD_SCALE;
+        uint256 claimed = claimedHolderRewards[holder];
+        return earned > claimed ? earned - claimed : 0;
+    }
+
+    /**
+     * @notice Claim accrued holder dividends (USDC) for the caller.
+     */
+    function claimHolderRewards() external nonReentrant {
+        uint256 pending = pendingHolderRewards(msg.sender);
+        require(pending > 0, "nothing to claim");
+        claimedHolderRewards[msg.sender] += pending;
+        holderRewardPool -= pending;
+        usdc.safeTransfer(msg.sender, pending);
+        emit HolderRewardsClaimed(msg.sender, pending);
     }
 
     function claimCreatorFees() external nonReentrant {

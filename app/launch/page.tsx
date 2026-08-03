@@ -1,14 +1,40 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import BondingBadge from "@/components/BondingBadge";
 import { BONDING_TYPES, CHAIN } from "@/lib/mockData";
 import { BondingType } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { useWallet } from "@/lib/wallet";
+import {
+  launchToken,
+  publicClient,
+  walletClient,
+  ARCODEX_BONDING,
+  USDC,
+  ERC20_ABI,
+  BONDING_ABI,
+  LAUNCH_FEE_BPS,
+  LAUNCH_CREATOR_SHARE_BPS,
+  LAUNCH_PLATFORM_SHARE_BPS,
+  LAUNCH_HOLDER_SHARE_BPS,
+  type Address,
+} from "@/lib/swap";
+import { parseUnits, parseAbi, decodeEventLog } from "viem";
+import { CircleNotch, ArrowUpRight, Coins } from "@phosphor-icons/react";
+
+const LAUNCH_EVENT_ABI = parseAbi([
+  "event TokenLaunched(address indexed token, address indexed creator, string name, string symbol, uint256 supply, uint256 startingPrice, uint8 bondingType)",
+]);
+
+type LaunchStatus = "idle" | "signing" | "launching" | "buying" | "success" | "error";
 
 export default function LaunchPage() {
-  const { user, connect, hasPrivy } = useAuth();
+  const { user, account, connect, hasPrivy, isWrongChain, switchToArc, error: walletError } = useAuth();
+  const { provider } = useWallet();
+
   const [bonding, setBonding] = useState<BondingType>("standard");
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -20,20 +46,150 @@ export default function LaunchPage() {
   const [creatorWallet, setCreatorWallet] = useState("");
   const [xHandle, setXHandle] = useState("");
   const [initialBuy, setInitialBuy] = useState("");
+  const [supply, setSupply] = useState("1000000000");
+  const [startingPrice, setStartingPrice] = useState("0.000001");
+  const [graduationPct, setGraduationPct] = useState("100");
   const [whitelist, setWhitelist] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+
+  const [launchStatus, setLaunchStatus] = useState<LaunchStatus>("idle");
+  const [launchError, setLaunchError] = useState("");
+  const [lastTx, setLastTx] = useState("");
+  const [launchedToken, setLaunchedToken] = useState("");
 
   const whitelistCount = whitelist
     .split(/[\n,]+/)
     .map((a) => a.trim())
     .filter((a) => a.length > 0).length;
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitted(true);
+  const feePct = Number(LAUNCH_FEE_BPS) / 100;
+  const creatorPct = (Number(LAUNCH_FEE_BPS) * Number(LAUNCH_CREATOR_SHARE_BPS)) / 10000;
+  const platformPct = (Number(LAUNCH_FEE_BPS) * Number(LAUNCH_PLATFORM_SHARE_BPS)) / 10000;
+  const holderPct = (Number(LAUNCH_FEE_BPS) * Number(LAUNCH_HOLDER_SHARE_BPS)) / 10000;
+
+  function parseWhitelist(): Address[] {
+    return whitelist
+      .split(/[\n,]+/)
+      .map((a) => a.trim())
+      .filter((a) => /^0x[a-fA-F0-9]{40}$/.test(a)) as Address[];
   }
 
-  if (submitted) {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLaunchError("");
+
+    if (!name.trim() || !symbol.trim()) {
+      setLaunchError("Name and symbol are required.");
+      setLaunchStatus("error");
+      return;
+    }
+    // Gate 1: wallet connected
+    if (!account) {
+      await connect();
+      return;
+    }
+    // Gate 2: on Arc (auto-adds the chain)
+    if (isWrongChain) {
+      const ok = await switchToArc();
+      if (!ok) return;
+    }
+    if (!provider) {
+      setLaunchError("No wallet detected. Install MetaMask / Rabby to continue.");
+      setLaunchStatus("error");
+      return;
+    }
+
+    try {
+      setLaunchStatus("signing");
+
+      const supplyNum = parseUnits(supply || "1000000000", 18);
+      const priceNum = parseUnits(startingPrice || "0.000001", 6);
+      const pct = Math.min(100, Math.max(1, Number(graduationPct) || 100));
+      const threshold = (supplyNum * BigInt(Math.round(pct * 100))) / 10000n; // pct % of supply
+      const whitelistArr = parseWhitelist();
+      const feeWallet: Address =
+        (creatorWallet.trim() as Address) && /^0x[a-fA-F0-9]{40}$/.test(creatorWallet.trim())
+          ? (creatorWallet.trim() as Address)
+          : (account as Address);
+
+      if (bonding === "early-buy" && whitelistArr.length === 0) {
+        setLaunchError("Early Buy requires at least one valid whitelist address (0x...).");
+        setLaunchStatus("error");
+        return;
+      }
+
+      // 1) Launch the token
+      setLaunchStatus("launching");
+      const { txHash } = await launchToken(provider, account as Address, {
+        name: name.trim(),
+        symbol: symbol.trim(),
+        description: description.trim(),
+        website: website.trim(),
+        twitter: twitter.trim().replace(/^@/, ""),
+        telegram: telegram.trim().replace(/^@/, ""),
+        discord: discord.trim(),
+        supply: supplyNum,
+        startingPrice: priceNum,
+        graduationThreshold: threshold,
+        creatorFeeWallet: feeWallet,
+        bondingType: bonding === "early-buy" ? 1 : 0,
+        whitelist: whitelistArr,
+      });
+      setLastTx(txHash);
+
+      // Decode the launched token address from the event
+      let tokenAddr: Address | undefined;
+      try {
+        const receipt = await publicClient().waitForTransactionReceipt({ hash: txHash });
+        const log = receipt.logs.find(
+          (l) => l.address.toLowerCase() === ARCODEX_BONDING.toLowerCase()
+        );
+        if (log) {
+          const decoded = decodeEventLog({
+            abi: LAUNCH_EVENT_ABI,
+            data: log.data,
+            topics: log.topics,
+          });
+          tokenAddr = (decoded.args as { token: Address }).token;
+        }
+      } catch {
+        /* event decode failed — token still launched */
+      }
+      if (tokenAddr) setLaunchedToken(tokenAddr);
+
+      // 2) Optional initial buy to seed the curve
+      const buyAmt = Number(initialBuy);
+      if (tokenAddr && buyAmt > 0) {
+        setLaunchStatus("buying");
+        const client = walletClient(provider);
+        const amountIn = parseUnits(String(buyAmt), 6);
+        // approve USDC -> curve
+        const { request: appReq } = await publicClient().simulateContract({
+          address: USDC,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [ARCODEX_BONDING, 2n ** 256n - 1n],
+          account: account as Address,
+        });
+        await client.writeContract(appReq);
+        // buy
+        const { request: buyReq } = await publicClient().simulateContract({
+          address: ARCODEX_BONDING,
+          abi: BONDING_ABI,
+          functionName: "buy",
+          args: [tokenAddr, amountIn],
+          account: account as Address,
+        });
+        await client.writeContract(buyReq);
+      }
+
+      setLaunchStatus("success");
+    } catch (err: any) {
+      setLaunchError(err?.shortMessage || err?.message || "Launch failed.");
+      setLaunchStatus("error");
+    }
+  }
+
+  if (launchStatus === "success") {
     return (
       <main className="min-h-screen">
         <Navbar />
@@ -41,26 +197,55 @@ export default function LaunchPage() {
           <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--pos)]/40 bg-[var(--pos)]/10">
             <span className="font-mono text-2xl text-[var(--pos)]">✓</span>
           </div>
-          <h1 className="mt-6 font-mono text-2xl font-semibold">Launch queued</h1>
+          <h1 className="mt-6 font-mono text-2xl font-semibold">Token launched!</h1>
           <p className="mt-3 font-mono text-xs leading-relaxed text-[var(--text-2)]">
-            {symbol || "Your token"} will deploy on {CHAIN.name} with a{" "}
+            <span className="font-semibold text-[var(--text)]">{symbol || "Your token"}</span> is live
+            on {CHAIN.name} with a{" "}
             <span className="text-[var(--text)]">
               {bonding === "early-buy" ? "Early Buy" : "Standard"}
             </span>{" "}
-            bonding curve. All prices in {CHAIN.nativeSymbol}. Connect the creator
-            wallet to sign the deployment transaction.
+            bonding curve. Every trade earns{" "}
+            <span className="text-[var(--accent)]">{feePct.toFixed(1)}%</span> fees —{" "}
+            {creatorPct.toFixed(1)}% creator · {platformPct.toFixed(1)}% platform ·{" "}
+            {holderPct.toFixed(1)}% holder dividends.
           </p>
-          {bonding === "early-buy" && whitelistCount > 0 && (
-            <p className="mt-3 rounded-md border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-2.5 font-mono text-[11px] text-[var(--accent)]">
-              Early Buy whitelist: {whitelistCount}{" "}
-              {whitelistCount === 1 ? "address" : "addresses"} restricted.
-            </p>
+
+          {lastTx && (
+            <a
+              href={`https://arc.blockscout.com/tx/${lastTx}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 py-2 font-mono text-xs text-[var(--accent)] transition hover:border-[var(--accent)]/50"
+            >
+              View launch transaction <ArrowUpRight size={13} />
+            </a>
           )}
+          {launchedToken && (
+            <div className="mt-4 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left">
+              <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                Token address
+              </p>
+              <p className="mt-1 break-all font-mono text-[11px] text-[var(--text)]">{launchedToken}</p>
+              <Link
+                href={`/token/${launchedToken}`}
+                className="mt-2 inline-block font-mono text-[11px] text-[var(--accent)] transition hover:underline"
+              >
+                Open token page →
+              </Link>
+            </div>
+          )}
+
           <button
-            onClick={() => setSubmitted(false)}
+            onClick={() => {
+              setLaunchStatus("idle");
+              setName("");
+              setSymbol("");
+              setLastTx("");
+              setLaunchedToken("");
+            }}
             className="mt-8 rounded-md border border-[var(--border)] px-5 py-2 font-mono text-xs text-[var(--text-2)] transition hover:border-[var(--accent)]/50 hover:text-[var(--text)]"
           >
-            Back
+            Launch another
           </button>
         </section>
       </main>
@@ -74,7 +259,8 @@ export default function LaunchPage() {
         <h1 className="font-mono text-3xl font-semibold tracking-tight">Launch</h1>
         <p className="mt-2 font-mono text-xs text-[var(--text-2)]">
           Create a token on {CHAIN.name}. Native currency:{" "}
-          <span className="text-[var(--accent)]">{CHAIN.nativeSymbol}</span>.
+          <span className="text-[var(--accent)]">{CHAIN.nativeSymbol}</span>. Deploy fees are paid
+          in native USDC.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-8">
@@ -140,7 +326,7 @@ export default function LaunchPage() {
               />
               {whitelistCount === 0 && (
                 <p className="mt-2 font-mono text-[10px] text-amber-300/80">
-                  If left empty, Early Buy opens to everyone.
+                  At least one valid 0x address is required for Early Buy.
                 </p>
               )}
             </div>
@@ -189,6 +375,51 @@ export default function LaunchPage() {
               className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] placeholder:text-[var(--text-2)]/50 focus:border-[var(--accent)]/60 focus:outline-none"
             />
           </label>
+
+          {/* Curve parameters */}
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+            <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-2)]">
+              Bonding curve parameters
+            </p>
+            <p className="mt-1 font-mono text-[11px] text-[var(--text-2)]/80">
+              Linear curve: price = startingPrice × (1 + sold / threshold).
+            </p>
+            <div className="mt-4 grid gap-5 sm:grid-cols-3">
+              <label className="block">
+                <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
+                  Supply (tokens)
+                </span>
+                <input
+                  value={supply}
+                  onChange={(e) => setSupply(e.target.value)}
+                  inputMode="numeric"
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
+                  Starting price (USDC)
+                </span>
+                <input
+                  value={startingPrice}
+                  onChange={(e) => setStartingPrice(e.target.value)}
+                  inputMode="decimal"
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block font-mono text-xs text-[var(--text-2)]">
+                  Graduation at (% sold)
+                </span>
+                <input
+                  value={graduationPct}
+                  onChange={(e) => setGraduationPct(e.target.value)}
+                  inputMode="numeric"
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] focus:border-[var(--accent)]/60 focus:outline-none"
+                />
+              </label>
+            </div>
+          </div>
 
           {/* Token socials */}
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -262,7 +493,7 @@ export default function LaunchPage() {
                 <input
                   value={creatorWallet}
                   onChange={(e) => setCreatorWallet(e.target.value)}
-                  placeholder="0x..."
+                  placeholder={account ? account : "0x..."}
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] placeholder:text-[var(--text-2)]/50 focus:border-[var(--accent)]/60 focus:outline-none"
                 />
               </label>
@@ -278,16 +509,18 @@ export default function LaunchPage() {
                 />
               </label>
             </div>
+
             <div className="mt-4 grid gap-5 sm:grid-cols-2">
               <div className="rounded-md border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3.5 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
                   Fee rate
                 </p>
                 <p className="mt-1 font-mono text-xl font-semibold text-[var(--accent)]">
-                  1.00%
+                  {feePct.toFixed(2)}%
                 </p>
                 <p className="mt-1 font-mono text-[10px] leading-relaxed text-[var(--text-2)]/80">
-                  1% on every trade · 0.8% creator · 0.2% platform.
+                  {creatorPct.toFixed(1)}% creator · {platformPct.toFixed(1)}% platform ·{" "}
+                  {holderPct.toFixed(1)}% holder dividends
                 </p>
               </div>
               <label className="block">
@@ -297,12 +530,13 @@ export default function LaunchPage() {
                 <input
                   value={initialBuy}
                   onChange={(e) => setInitialBuy(e.target.value)}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
+                  inputMode="decimal"
+                  placeholder="e.g. 50"
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 font-mono text-sm text-[var(--text)] placeholder:text-[var(--text-2)]/50 focus:border-[var(--accent)]/60 focus:outline-none"
                 />
+                <p className="mt-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+                  Seeds the curve so trading starts immediately.
+                </p>
               </label>
             </div>
           </div>
@@ -312,22 +546,57 @@ export default function LaunchPage() {
               Connect a wallet (MetaMask / Rabby) to deploy your token on Arc.
             </p>
           )}
+          {account && isWrongChain && (
+            <p className="rounded-md border border-amber-300/30 bg-amber-400/5 px-4 py-3 font-mono text-xs text-amber-200/90">
+              Wrong network — Arcodex runs on Arc (chain 5042).{" "}
+              <button type="button" onClick={() => switchToArc()} className="underline">
+                Switch to Arc
+              </button>
+            </p>
+          )}
+          {launchStatus === "error" && (
+            <p className="rounded-md border border-[var(--neg)]/40 bg-[var(--neg)]/10 px-4 py-3 font-mono text-xs text-[var(--neg)]">
+              {launchError}
+            </p>
+          )}
+          {walletError && launchStatus === "idle" && (
+            <p className="rounded-md border border-[var(--neg)]/40 bg-[var(--neg)]/10 px-4 py-3 font-mono text-xs text-[var(--neg)]">
+              {walletError}
+            </p>
+          )}
 
           <button
             type="submit"
-            disabled={!user}
-            className="w-full rounded-md bg-[var(--accent)] py-3 font-mono text-sm font-semibold text-[#05070b] transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={
+              !user ||
+              isWrongChain ||
+              launchStatus === "signing" ||
+              launchStatus === "launching" ||
+              launchStatus === "buying"
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] py-3 font-mono text-sm font-semibold text-[#05070b] transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {user ? "Launch token" : "Connect wallet to launch"}
+            {(launchStatus === "signing" || launchStatus === "launching" || launchStatus === "buying") && (
+              <CircleNotch size={15} className="animate-spin" />
+            )}
+            {launchStatus === "signing"
+              ? "Waiting for signature…"
+              : launchStatus === "launching"
+                ? "Deploying token…"
+                : launchStatus === "buying"
+                  ? "Seeding curve…"
+                  : !user
+                    ? "Connect wallet to launch"
+                    : isWrongChain
+                      ? "Switch to Arc first"
+                      : `Launch ${symbol || "token"}`}
           </button>
-          {!user && hasPrivy && (
-            <button
-              type="button"
-              onClick={() => connect("twitter")}
-              className="w-full rounded-md border border-[var(--border)] py-3 font-mono text-sm text-[var(--text)] transition hover:border-[var(--accent)]/50"
-            >
-              Log in with X
-            </button>
+
+          {user && (
+            <div className="flex items-center justify-center gap-1.5 font-mono text-[10px] text-[var(--text-2)]/70">
+              <Coins size={11} className="text-[var(--accent)]" />
+              Holders earn {holderPct.toFixed(1)}% of every trade as USDC dividends — claim anytime.
+            </div>
           )}
         </form>
       </section>

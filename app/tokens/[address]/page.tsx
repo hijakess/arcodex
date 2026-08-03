@@ -23,6 +23,9 @@ import {
   approveToken,
   quoteSwap,
   publicClient,
+  claimHolderRewards,
+  getPendingHolderRewards,
+  isArcodexToken,
   ARCODEX_FEE_ROUTER,
   SWAP_ROUTER,
   USDC,
@@ -42,6 +45,7 @@ import {
   CircleNotch,
   ArrowUpRight,
   ArrowDownRight,
+  Coins,
 } from "@phosphor-icons/react";
 
 type Tf = keyof typeof CHART_TFS;
@@ -64,6 +68,12 @@ export default function TokenDetailPage() {
   const [lastTx, setLastTx] = useState("");
   const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
   const [tokenBalance, setTokenBalance] = useState<bigint | null>(null);
+
+  // Holder dividends (Plan A) — only for tokens launched on Arcodex
+  const [isArcodex, setIsArcodex] = useState(false);
+  const [pendingRewards, setPendingRewards] = useState<bigint | null>(null);
+  const [claimStatus, setClaimStatus] = useState<"idle" | "claiming" | "success" | "error">("idle");
+  const [claimError, setClaimError] = useState("");
 
   // Real wallet (EIP-1193 injected provider)
   const {
@@ -115,6 +125,51 @@ export default function TokenDetailPage() {
       cancelled = true;
     };
   }, [account, token]);
+
+  // Detect Arcodex-launched tokens + fetch pending holder dividends
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    isArcodexToken(token.address as Address)
+      .then((ok) => {
+        if (!cancelled) setIsArcodex(ok);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || !account || !isArcodex) {
+      setPendingRewards(null);
+      return;
+    }
+    let cancelled = false;
+    getPendingHolderRewards(token.address as Address, account as Address)
+      .then((v) => {
+        if (!cancelled) setPendingRewards(v);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token, account, isArcodex]);
+
+  async function handleClaimRewards() {
+    if (!token || !account || !provider) return;
+    setClaimStatus("claiming");
+    setClaimError("");
+    try {
+      await claimHolderRewards(provider, account as Address, token.address as Address);
+      setClaimStatus("success");
+      const v = await getPendingHolderRewards(token.address as Address, account as Address);
+      setPendingRewards(v);
+    } catch (e: any) {
+      setClaimError(e?.shortMessage || e?.message || "Claim failed.");
+      setClaimStatus("error");
+    }
+  }
 
   // Pool fee tier for this token (RadarDex V3 pools commonly use 1% = 10000)
   const poolFee = 10000;
@@ -355,6 +410,60 @@ export default function TokenDetailPage() {
               <Stat label="Traders 24h" value={formatNum(token.holders)} />
               <Stat label="Volume 24h" value={formatUsdc(token.volume24h)} />
             </div>
+
+            {/* Holder dividends (Arcodex-launched tokens only) */}
+            {isArcodex && (
+              <div className="mt-6 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-dim)]/40 p-4">
+                <div className="flex items-center gap-2">
+                  <Coins size={15} className="text-[var(--accent)]" />
+                  <p className="font-mono text-xs uppercase tracking-wider text-[var(--accent)]">
+                    Holder dividends
+                  </p>
+                  <span className="ml-auto rounded border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2 py-0.5 font-mono text-[10px] text-[var(--accent)]">
+                    0.1% of every trade
+                  </span>
+                </div>
+                <p className="mt-2 font-mono text-[11px] leading-relaxed text-[var(--text-2)]/80">
+                  Hold {token.symbol} and earn USDC dividends from trading fees — claim anytime,
+                  pro-rata to your balance.
+                </p>
+                {account ? (
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">
+                        Pending rewards
+                      </p>
+                      <p className="font-mono text-lg font-semibold text-[var(--accent)]">
+                        {pendingRewards !== null ? formatUsdc(Number(pendingRewards) / 1e6) : "—"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleClaimRewards}
+                      disabled={
+                        claimStatus === "claiming" || (pendingRewards !== null && pendingRewards <= 0n)
+                      }
+                      className="rounded-md bg-[var(--accent)] px-4 py-2 font-mono text-xs font-semibold text-[#05070b] transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {claimStatus === "claiming" ? "Claiming…" : "Claim"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-3 font-mono text-[11px] text-[var(--text-2)]/70">
+                    Connect a wallet to see your pending rewards.
+                  </p>
+                )}
+                {claimStatus === "success" && (
+                  <p className="mt-2 rounded-md border border-[var(--pos)]/40 bg-[var(--pos)]/10 px-3 py-2 font-mono text-[11px] text-[var(--pos)]">
+                    Rewards claimed — USDC sent to your wallet.
+                  </p>
+                )}
+                {claimStatus === "error" && (
+                  <p className="mt-2 rounded-md border border-[var(--neg)]/40 bg-[var(--neg)]/10 px-3 py-2 font-mono text-[11px] text-[var(--neg)]">
+                    {claimError}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Token details: socials, contract, pool */}
             <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">

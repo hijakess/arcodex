@@ -70,7 +70,7 @@ Fixed **1.00%** fee on every trade (buy and sell):
 ┌──────────────────▼──────────────────────────┐
 │        Smart Contracts (Arc chain)           │
 │  ArcodexBondingCurve · BondingCurveToken    │
-│  Fees: 80% creator / 20% platform           │
+│  Fees: 0.7% creator / 0.2% platform / 0.1% holder │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐

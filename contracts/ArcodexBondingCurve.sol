@@ -21,18 +21,21 @@ import {ArcodexPool} from "./ArcodexPool.sol";
  *   (whitelisted wallets get first access before public trading).
  * - At graduation (100% of the bonding curve sold) a full AMM pool is
  *   deployed (ArcodexPool) and the remaining supply + USDC migrate to it.
- * - Launch-token fees are fixed at 1% of every trade: 80% to the creator,
- *   20% to the platform. Fees accrue on-chain and are claimable by each party.
+ * - Launch-token fees are fixed at 1% of every trade: 70% to the creator,
+ *   20% to the platform, 10% to HOLDER dividends (fee reflection).
+ *   Fees accrue on-chain and are claimable by each party.
  *
- * Fee split (per user request — LAUNCH tokens)
- * ---------------------------------------------
+ * Fee split (LAUNCH tokens)
+ * -------------------------
  *   fee = 1.0% of trade notional
- *   creator share = 80% of fee  (0.8%)
+ *   creator share = 70% of fee (0.7%)
  *   platform share = 20% of fee (0.2%)
+ *   holder share  = 10% of fee (0.1%) -> USDC dividend pool for token holders,
+ *   claimable pro-rata to balance (fee-reflection pattern, Plan A).
  *
  * NOTE: swap of EXISTING tokens goes through ArcodexFeeRouter at 1.5%
- * (1.2% creator / 0.3% platform). This contract governs newly launched
- * tokens at 1% (0.8% / 0.2%).
+ * (100% platform). This contract governs newly launched tokens at 1%
+ * (0.7% / 0.2% / 0.1%).
  *
  * @custom:security-contact https://arcodex.app
  */
@@ -42,8 +45,10 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
     /* ============ Constants ============ */
 
     uint256 public constant FEE_BPS = 100; // 1.00% total fee (launch tokens)
-    uint256 public constant CREATOR_SHARE_BPS = 8000; // 80% of fee
+    uint256 public constant CREATOR_SHARE_BPS = 7000; // 70% of fee
     uint256 public constant PLATFORM_SHARE_BPS = 2000; // 20% of fee
+    uint256 public constant HOLDER_SHARE_BPS = 1000; // 10% of fee -> holder dividends
+    uint256 public constant REWARD_SCALE = 1e18; // precision for dividend accumulator
     uint256 public constant BPS = 10_000;
 
     /* ============ State ============ */
@@ -94,6 +99,13 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
     /// @notice USDC balance held per token curve (curve liquidity).
     mapping(address => uint256) public curveBalance;
 
+    /// @notice USDC dividend pool accrued for token holders (10% of fees).
+    mapping(address => uint256) public holderRewardPool;
+    /// @notice Scaled reward accumulator per token (REWARD_SCALE precision).
+    mapping(address => uint256) public accRewardPerShare;
+    /// @notice Already-claimed dividends per token per holder.
+    mapping(address => mapping(address => uint256)) public claimedHolderRewards;
+
     /* ============ Events ============ */
 
     event TokenLaunched(
@@ -107,8 +119,9 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
     );
     event Buy(address indexed token, address indexed buyer, uint256 usdcIn, uint256 tokensOut);
     event Sell(address indexed token, address indexed seller, uint256 tokensIn, uint256 usdcOut);
-    event FeesAccrued(address indexed token, uint256 creatorShare, uint256 platformShare);
+    event FeesAccrued(address indexed token, uint256 creatorShare, uint256 platformShare, uint256 holderShare);
     event FeesClaimed(address indexed token, address indexed claimer, uint256 amount);
+    event HolderRewardsClaimed(address indexed token, address indexed holder, uint256 amount);
     event Graduated(address indexed token, address indexed pool);
 
     /* ============ Constructor ============ */
@@ -265,11 +278,47 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     function _accrueFee(address token, uint256 fee) internal {
         TokenInfo storage info = tokens[token];
-        uint256 creatorShare = (fee * CREATOR_SHARE_BPS) / BPS;
-        uint256 platformShare = fee - creatorShare;
+        uint256 creatorShare = (fee * CREATOR_SHARE_BPS) / BPS; // 70%
+        uint256 platformShare = (fee * PLATFORM_SHARE_BPS) / BPS; // 20%
+        uint256 holderShare = fee - creatorShare - platformShare; // 10% remainder
         info.creatorClaimable += creatorShare;
         info.platformClaimable += platformShare;
-        emit FeesAccrued(token, creatorShare, platformShare);
+        if (holderShare > 0) {
+            uint256 supply = BondingCurveToken(token).totalSupply();
+            if (supply > 0) {
+                // fee reflection: acc = pool * SCALE / supply (supply is fixed at launch)
+                accRewardPerShare[token] += (holderShare * REWARD_SCALE) / supply;
+                holderRewardPool[token] += holderShare;
+            } else {
+                info.platformClaimable += holderShare; // no holders -> platform
+            }
+        }
+        emit FeesAccrued(token, creatorShare, platformShare, holderShare);
+    }
+
+    /**
+     * @notice Pending holder dividend (USDC) for a wallet, pro-rata to balance.
+     */
+    function pendingHolderRewards(address token, address holder) public view returns (uint256) {
+        TokenInfo storage info = tokens[token];
+        if (info.token == address(0)) return 0;
+        uint256 bal = BondingCurveToken(token).balanceOf(holder);
+        uint256 acc = accRewardPerShare[token];
+        uint256 claimed = claimedHolderRewards[token][holder];
+        uint256 earned = (bal * acc) / REWARD_SCALE;
+        return earned > claimed ? earned - claimed : 0;
+    }
+
+    /**
+     * @notice Claim accrued holder dividends (USDC) for the caller.
+     */
+    function claimHolderRewards(address token) external nonReentrant {
+        uint256 pending = pendingHolderRewards(token, msg.sender);
+        require(pending > 0, "nothing to claim");
+        claimedHolderRewards[token][msg.sender] += pending;
+        holderRewardPool[token] -= pending;
+        usdc.safeTransfer(msg.sender, pending);
+        emit HolderRewardsClaimed(token, msg.sender, pending);
     }
 
     /**
