@@ -81,6 +81,13 @@ async function postOnce(
     });
     const j = await r.json();
     if (j.error) return { ok: false, err: new Error(String(j.error.message || "rpc error")) };
+    // A successful eth_call ALWAYS returns a hex string. `null` means the node
+    // answered without data (flaky arcanine node) — treat it as a failed answer
+    // so the parallel runner falls through to a healthy endpoint. Receipts and
+    // other methods may legitimately return null, so only gate eth_call here.
+    if (method === "eth_call" && (j.result === null || j.result === undefined)) {
+      return { ok: false, err: new Error("empty eth_call result") };
+    }
     return { ok: true, result: j.result };
   } catch (e) {
     return { ok: false, err: e };
