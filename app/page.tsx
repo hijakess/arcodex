@@ -285,12 +285,11 @@ export default function HomePage() {
 
       {/* Stats strip */}
       <section className="border-t border-[var(--border)]">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-px px-4 py-10 sm:grid-cols-4 sm:px-6">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-px px-4 py-10 sm:grid-cols-3 sm:px-6">
           {[
             ["Native currency", CHAIN.nativeSymbol],
-            ["Launch fee", "1%"],
-            ["Swap fee", "1.5%"],
-            ["Graduation", "AMM at 100%"],
+            ["Launch fee", "$1"],
+            ["Graduation", "AMM at 80%"],
           ].map(([k, v]) => (
             <div key={k} className="px-4 py-3">
               <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-2)]">

@@ -12,7 +12,7 @@ const DOCS: Record<string, { title: string; body: string }> = {
 
 ## Abstract
 
-Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset** — both the pricing currency and the gas token. Every token launches on a bonding curve with a fixed **1% trading fee** split **70% creator · 20% platform · 10% holder dividend pool**. Swapping existing Arc tokens through Arcodex's fee router costs a flat **1.5% (100% to the platform)**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
+Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset** — both the pricing currency and the gas token. Every token launches on a bonding curve with a fixed **1% trading fee** split **70% creator · 20% platform · 10% holder dividend pool**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
 
 ## 1. Problem
 
@@ -60,13 +60,9 @@ Every buy and sell on a launch token accrues a **1% fee** in USDC, split three w
 
 **Holder dividends (fee reflection):** 10% of every trade is deposited into a per-token USDC dividend pool. Any holder can claim their pro-rata share based on token balance — hold more, earn more. Claimed dividends are paid out in USDC directly.
 
-### 4.2 Swap existing tokens (ArcodexFeeRouter) — 1.50% per trade
+### 4.2 Swap existing tokens (ArcodexFeeRouter)
 
 Swapping tokens that already have DEX liquidity on Arc (e.g. RadarDex) through Arcodex's atomic fee router:
-
-| Party | Share of fee | Effective rate | Goes to |
-|-------|--------------|----------------|---------|
-| Platform | 100% | 1.50% | Arcodex treasury |
 
 - Fees accrue on-chain in USDC
 - Creators claim from their profile; the platform claims to a treasury wallet
