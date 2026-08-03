@@ -33,7 +33,7 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
     uint256 public constant CREATOR_SHARE_BPS = 7000; // 70% of fee
     uint256 public constant PLATFORM_SHARE_BPS = 2000; // 20% of fee
     uint256 public constant HOLDER_SHARE_BPS = 1000; // 10% of fee -> holder dividends
-    uint256 public constant REWARD_SCALE = 1e18; // precision for dividend accumulator
+    uint256 public constant REWARD_SCALE = 1e36; // precision for dividend accumulator
     uint256 public constant BPS = 10_000;
 
     /* ============ State ============ */

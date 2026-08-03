@@ -18,7 +18,7 @@ export const ARC_CHAIN = {
 } as const;
 
 // Deployed contracts (Arc mainnet)
-export const ARCODEX_BONDING = "0xfe4CEf26Ab54581868A3D727e7bc72CC4AabD324" as Address;
+export const ARCODEX_BONDING = "0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0" as Address;
 export const ARCODEX_FEE_ROUTER = "0x8FcA8fB88337BdedA54AA28227E1294923f5ca52" as Address;
 export const USDC = "0x3600000000000000000000000000000000000000" as Address;
 export const SWAP_ROUTER = "0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77" as Address;
