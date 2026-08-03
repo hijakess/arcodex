@@ -138,7 +138,7 @@ export default function TokenDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [account, token]);
+  }, [account, token, lastTx]);
 
   // Detect Arcodex-launched tokens + fetch pending holder dividends
   useEffect(() => {
@@ -206,9 +206,7 @@ export default function TokenDetailPage() {
         const isBuy = mode === "buy";
         const tokenIn = isBuy ? USDC : (token.address as Address);
         const tokenOut = isBuy ? (token.address as Address) : USDC;
-        const amountIn = isBuy
-          ? BigInt(Math.round(amt * 1e6))
-          : BigInt(Math.round(amt * 1e18));
+        const amountIn = amountToBigint(amount, isBuy ? 6 : 18);
         const q = await quoteSwap(tokenIn, tokenOut, amountIn, poolFee);
         if (cancelled) return;
         setLiveQuoteRaw(q);
@@ -269,9 +267,7 @@ export default function TokenDetailPage() {
       const isBuy = mode === "buy";
       const tokenIn = isBuy ? USDC : tokenAddr;
       const tokenOut = isBuy ? tokenAddr : USDC;
-      const amountIn = isBuy
-        ? BigInt(Math.round(amt * 1e6)) // USDC 6 decimals
-        : BigInt(Math.round(amt * 1e18)); // token 18 decimals
+      const amountIn = amountToBigint(amount, isBuy ? 6 : 18);
 
       // 1.5% fee -> minOut = quote * (1 - 1.5% - slippage 2%)
       // Reuse the auto-quote when it covers this exact input (avoids a second
@@ -379,7 +375,7 @@ export default function TokenDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [params.address]);
+  }, [params.address, lastTx]);
 
   const chartData: Candle[] = chartCandles.map((c) => ({
     time: c.time,
@@ -690,16 +686,14 @@ export default function TokenDetailPage() {
                             ? formatUsdc(Number(usdcBalance) / 1e6)
                             : "—"
                           : tokenBalance !== null
-                            ? Number(tokenBalance) / 1e18 < 1000
-                              ? Number(tokenBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })
-                              : Number(tokenBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                            ? formatTokenAmount(tokenBalance)
                             : "—"}
                         <button
                           onClick={() => {
                             if (mode === "buy" && usdcBalance !== null) {
-                              setAmount((Number(usdcBalance) / 1e6).toFixed(4));
+                              setAmount(usdcToDecimal(usdcBalance));
                             } else if (mode === "sell" && tokenBalance !== null) {
-                              setAmount((Number(tokenBalance) / 1e18).toFixed(4));
+                              setAmount(bigintToDecimal(tokenBalance));
                             }
                           }}
                           disabled={usdcBalance === null && tokenBalance === null}
@@ -960,6 +954,51 @@ export default function TokenDetailPage() {
       </section>
     </main>
   );
+}
+
+// Precise helpers for 18-decimal token balances (no floating-point noise):
+// 432038000000000000000 -> "432.038", 5000000000000000 -> "0.005",
+// 40000000000000 -> "0.00004"
+function formatTokenAmount(balance: bigint): string {
+  const whole = balance / 10n ** 18n;
+  if (whole >= 1000n) return whole.toLocaleString();
+  // tiny balances (< 1 token): keep up to 8 decimals so small dust isn't hidden
+  const digits = whole === 0n ? 8 : 4;
+  const frac = (balance % 10n ** 18n)
+    .toString()
+    .padStart(18, "0")
+    .slice(0, digits)
+    .replace(/0+$/, "");
+  return frac ? `${whole.toLocaleString()}.${frac}` : whole.toLocaleString();
+}
+
+// Decimal string for the amount input (no thousands separators — number input)
+function bigintToDecimal(balance: bigint): string {
+  const whole = balance / 10n ** 18n;
+  const frac = (balance % 10n ** 18n)
+    .toString()
+    .padStart(18, "0")
+    .slice(0, 6)
+    .replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
+
+// Same for USDC (6 decimals): 563700 -> "0.5637", 40 -> "0.00004"
+function usdcToDecimal(balance: bigint): string {
+  const whole = balance / 1_000_000n;
+  const frac = (balance % 1_000_000n)
+    .toString()
+    .padStart(6, "0")
+    .slice(0, 6)
+    .replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
+
+// Parse a user-typed decimal amount into exact wei (no Math.round float loss)
+function amountToBigint(amount: string, decimals: number): bigint {
+  const [w, f = ""] = amount.split(".");
+  const frac = f.slice(0, decimals).padEnd(decimals, "0");
+  return BigInt(w || "0") * 10n ** BigInt(decimals) + BigInt(frac || "0");
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
