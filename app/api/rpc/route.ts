@@ -58,7 +58,9 @@ async function rpcCall(method: string, params: unknown[], id: number, retries = 
         const j = await r.json();
         if (j.error) {
           const msg = String(j.error.message || "");
-          if (/quota|rate limit|429|599|limit/i.test(msg) && attempt < retries) {
+          // Contract-level reverts are real answers — pass them through, don't
+          // treat them as transport failures and mask them as "all failed".
+          if (/quota|rate limit|429|599|limit|timeout|fetch/i.test(msg) && attempt < retries) {
             await sleep(900 * (attempt + 1));
             continue;
           }
