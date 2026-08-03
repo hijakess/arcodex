@@ -16,7 +16,7 @@ Verified: **2026-08-03** · Arc mainnet (chainId **5042**) · Explorer-independe
 
 | Contract | Address | Result |
 |---|---|---|
-| **ArcodexBondingCurve** | `0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0` | ✅ **VERIFIED** — 23,348 B runtime; matches after 7 immutable patches (USDC `0x3600...`) |
+| **ArcodexBondingCurve** | `0x1fd47d2f80907fb25ac9949515dc152b0461d897` | ✅ **VERIFIED** — 23,521 B runtime (V2 with `LAUNCH_FEE` = $1); matches after 8 immutable patches (USDC `0x3600...` + treasury) |
 | **ArcodexFeeRouter** | `0x8FcA8fB88337BdedA54AA28227E1294923f5ca52` | ✅ **VERIFIED** — 3,568 B runtime; **EXACT** bytecode match |
 | **BondingCurveToken** (ARCT) | `0x42983a981b90136b418c26caefb8a1bc89a00c1d` | ✅ **VERIFIED** — 1,925 B runtime; matches after 2 immutable patches (factory `0x0264...`) |
 | **ArcodexPool** | — (factory-deployed at graduation) | ⏳ no instance deployed yet |

@@ -50,6 +50,8 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
     uint256 public constant HOLDER_SHARE_BPS = 1000; // 10% of fee -> holder dividends
     uint256 public constant REWARD_SCALE = 1e36; // precision for dividend accumulator
     uint256 public constant BPS = 10_000;
+    /// @notice Flat platform launch fee: 1 USDC (6 decimals) per deploy.
+    uint256 public constant LAUNCH_FEE = 1_000_000;
 
     /* ============ State ============ */
 
@@ -168,6 +170,9 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
         if (bondingType == BondingType.EarlyBuy) {
             require(whitelist.length > 0, "empty whitelist");
         }
+
+        // Flat $1 platform launch fee — single tx: fee + token deploy + gas.
+        usdc.safeTransferFrom(msg.sender, platformTreasury, LAUNCH_FEE);
 
         // Deploy the token contract
         BondingCurveToken t = new BondingCurveToken(name, symbol, address(this));

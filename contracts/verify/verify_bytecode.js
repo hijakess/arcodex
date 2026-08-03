@@ -71,7 +71,7 @@ function patchImmutables(compiled, onchain) {
   const Z = "0".repeat(64);
   const strip = (code) => (code.slice(-2) === "29" ? code.slice(0, -86) : code);
   const targets = [
-    { file: "ArcodexBondingCurve.sol", name: "ArcodexBondingCurve", addr: "0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0" },
+    { file: "ArcodexBondingCurve.sol", name: "ArcodexBondingCurve", addr: "0x1fd47d2f80907fb25ac9949515dc152b0461d897" },
     { file: "ArcodexFeeRouter.sol", name: "ArcodexFeeRouter", addr: "0x8FcA8fB88337BdedA54AA28227E1294923f5ca52" },
     { file: "ArcodexBondingCurve.sol", name: "BondingCurveToken", addr: "0x42983a981b90136b418c26caefb8a1bc89a00c1d" },
     { file: "ArcodexPool.sol", name: "ArcodexPool", addr: null },

@@ -19,12 +19,14 @@ export const ARC_CHAIN = {
 } as const;
 
 // Deployed contracts (Arc mainnet)
-export const ARCODEX_BONDING = "0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0" as Address;
+// V2 bonding curve: flat $1 LAUNCH_FEE built into launchToken (1 tx per launch).
+export const ARCODEX_BONDING = "0x1fd47d2f80907fb25ac9949515dc152b0461d897" as Address;
 export const ARCODEX_FEE_ROUTER = "0x8FcA8fB88337BdedA54AA28227E1294923f5ca52" as Address;
 export const USDC = "0x3600000000000000000000000000000000000000" as Address;
 export const SWAP_ROUTER = "0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77" as Address;
 export const QUOTER = "0x7dfd4f31be6814d2906bde155c3e1b146eac1468" as Address;
-// Platform fee treasury — receives the flat $1 launch fee per deploy.
+// Platform fee treasury — receives the flat $1 launch fee (pulled by the
+// bonding curve inside launchToken, so deploy is a single transaction).
 export const PLATFORM_TREASURY = "0x04FA941F3fa799f86fE9207D1c77eE4F3331B2f3" as Address;
 // Flat launch fee: 1 USDC (6 decimals) per token deployment, + gas.
 export const LAUNCH_FEE_USDC = 1_000_000n;

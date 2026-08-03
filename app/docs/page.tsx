@@ -197,7 +197,7 @@ arc-launchpad/
 
 | Contract | Address | Fee |
 |----------|---------|-----|
-| ArcodexBondingCurve | \`0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0\` | 1% (launch tokens, 0.7% creator / 0.2% platform / 0.1% holder) |
+| ArcodexBondingCurve | \`0x1fd47d2f80907fb25ac9949515dc152b0461d897\` | 1% (launch tokens, 0.7% creator / 0.2% platform / 0.1% holder) + $1 flat launch fee |
 | ArcodexFeeRouter | \`0x8FcA8fB88337BdedA54AA28227E1294923f5ca52\` | swap existing tokens, 100% platform |
 | USDC (quote) | \`0x3600000000000000000000000000000000000000\` | — |
 | ArcodexPool | deployed per-token at graduation | 1% (0.7% creator / 0.2% platform / 0.1% holder) |

@@ -18,7 +18,7 @@ import {
   BONDING_ABI,
   LAUNCH_FEE_BPS,
   LAUNCH_FEE_USDC,
-  PLATFORM_TREASURY,
+  getAllowance,
   LAUNCH_CREATOR_SHARE_BPS,
   LAUNCH_PLATFORM_SHARE_BPS,
   LAUNCH_HOLDER_SHARE_BPS,
@@ -150,18 +150,22 @@ export default function LaunchPage() {
         return;
       }
 
-      // 0) Pay the flat $1 platform launch fee (USDC transfer) — then deploy
+      // 0) Ensure USDC allowance for the flat $1 launch fee — the bonding
+      // curve pulls it inside launchToken, so the deploy itself is 1 tx.
       setLaunchStatus("paying");
-      const { request: feeReq } = await publicClient().simulateContract({
-        address: USDC,
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [PLATFORM_TREASURY, LAUNCH_FEE_USDC],
-        account: account as Address,
-      });
-      await walletClient(provider).writeContract(feeReq);
+      const allowance = await getAllowance(account as Address, ARCODEX_BONDING);
+      if (allowance < LAUNCH_FEE_USDC) {
+        const { request: appReq } = await publicClient().simulateContract({
+          address: USDC,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [ARCODEX_BONDING, 2n ** 256n - 1n],
+          account: account as Address,
+        });
+        await walletClient(provider).writeContract(appReq);
+      }
 
-      // 1) Launch the token
+      // 1) Launch the token — single tx: $1 fee + token deploy + gas
       setLaunchStatus("launching");
       const { txHash } = await launchToken(provider, account as Address, {
         name: name.trim(),
@@ -617,7 +621,8 @@ export default function LaunchPage() {
                   $1.00
                 </p>
                 <p className="mt-1 font-mono text-[10px] leading-relaxed text-[var(--text-2)]/80">
-                  Flat platform fee per deploy — paid in USDC, + gas
+                  Flat platform fee per deploy — pulled inside launchToken,
+                  so the whole launch is a single transaction
                 </p>
               </div>
               <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3.5 py-3">
@@ -692,7 +697,7 @@ export default function LaunchPage() {
             {launchStatus === "signing"
               ? "Waiting for signature…"
               : launchStatus === "paying"
-                ? "Paying $1 launch fee…"
+                ? "Approving USDC…"
                 : launchStatus === "launching"
                   ? "Deploying token…"
                   : launchStatus === "buying"

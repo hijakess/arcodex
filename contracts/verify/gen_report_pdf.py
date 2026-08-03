@@ -90,9 +90,9 @@ mono("solc version  : 0.8.24\n"
      "dependencies  : @openzeppelin/contracts 5.0.2")
 
 section("3. Verification Results")
-kv("ArcodexBondingCurve", "0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0")
+kv("ArcodexBondingCurve", "0x1fd47d2f80907fb25ac9949515dc152b0461d897")
 pdf.ln(0)
-okrow("", "ArcodexBondingCurve", "PASS", "23348 B runtime - match after 7 immutable patches (USDC 0x3600...0000)")
+okrow("", "ArcodexBondingCurve", "PASS", "23521 B runtime - match after 8 immutable patches (USDC 0x3600...0000, treasury)")
 okrow("", "ArcodexFeeRouter", "PASS", "3568 B runtime - EXACT bytecode match")
 okrow("", "BondingCurveToken (ARCT)", "PASS", "1925 B runtime - match after 2 immutable patches (factory 0x0264...)")
 okrow("", "ArcodexPool", "N/A", "no instance deployed yet - factory deploys at graduation")
