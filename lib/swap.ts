@@ -88,21 +88,24 @@ export async function quoteSwap(
   poolFee: number
 ): Promise<bigint> {
   const client = publicClient();
+  // Struct form first — this quoter (RadarDex V3) rejects the flat form with
+  // an RPC-level error ("project ID exceeded quota" / "not a valid request"),
+  // which the proxy used to retry and blow the Vercel 10s budget. Struct is
+  // the form the contract actually accepts; flat stays only as a fallback.
   try {
-    const q = await client.readContract({
-      address: QUOTER,
-      abi: QUOTER_ABI,
-      functionName: "quoteExactInputSingle",
-      args: [tokenIn, tokenOut, amountIn, poolFee, 0n],
-    });
-    return BigInt(q as bigint);
-  } catch {
-    // some quoters need the struct form
     const q = await client.readContract({
       address: QUOTER,
       abi: QUOTER_ABI_STRUCT,
       functionName: "quoteExactInputSingle",
       args: [{ tokenIn, tokenOut, amountIn, fee: poolFee, sqrtPriceLimitX96: 0n }],
+    });
+    return BigInt(q as bigint);
+  } catch {
+    const q = await client.readContract({
+      address: QUOTER,
+      abi: QUOTER_ABI,
+      functionName: "quoteExactInputSingle",
+      args: [tokenIn, tokenOut, amountIn, poolFee, 0n],
     });
     return BigInt(q as bigint);
   }
@@ -152,6 +155,21 @@ export async function approveToken(
     account,
   });
   return client.writeContract(request);
+}
+
+/** Current USDC/token allowance granted to the fee router. */
+export async function getAllowance(
+  account: Address,
+  token: Address
+): Promise<bigint> {
+  const client = publicClient();
+  const r = await client.readContract({
+    address: token,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: [account, ARCODEX_FEE_ROUTER],
+  });
+  return BigInt(r as bigint);
 }
 
 // ---- Bonding curve (launch tokens) ----

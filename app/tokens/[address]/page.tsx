@@ -26,6 +26,7 @@ import { useWallet, ARC_CHAIN_ID } from "@/lib/wallet";
 import {
   executeSwap,
   approveToken,
+  getAllowance,
   quoteSwap,
   publicClient,
   claimHolderRewards,
@@ -265,9 +266,13 @@ export default function TokenDetailPage() {
       const quote = await quoteSwap(tokenIn, tokenOut, amountIn, poolFee);
       const minOut = (quote * 9650n) / 10000n; // 3.5% total buffer
 
-      // approve only the input token
+      // approve only the input token, and only if the current allowance is
+      // not enough (avoids an unnecessary wallet signature on repeat swaps)
       setSwapStatus("approving");
-      await approveToken(provider, account as Address, tokenIn);
+      const allowance = await getAllowance(account as Address, tokenIn);
+      if (allowance < amountIn) {
+        await approveToken(provider, account as Address, tokenIn);
+      }
 
       setSwapStatus("swapping");
       const { txHash } = await executeSwap(provider, account as Address, tokenIn, tokenOut, poolFee, amountIn, minOut);
@@ -714,7 +719,12 @@ export default function TokenDetailPage() {
                         maximumFractionDigits: liveQuote < 1 ? 6 : 4,
                       })
                     ) : amount ? (
-                      (Number(amount) / token.priceUsdc).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      <>
+                        {(Number(amount) / token.priceUsdc).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        <span className="ml-1 align-middle text-[9px] uppercase tracking-wider text-[var(--text-2)]/60">
+                          (est.)
+                        </span>
+                      </>
                     ) : (
                       "0.00"
                     )}
