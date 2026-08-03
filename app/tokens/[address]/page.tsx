@@ -681,7 +681,7 @@ export default function TokenDetailPage() {
                     className="w-full bg-transparent font-mono text-xl text-[var(--text)] placeholder:text-[var(--text-2)]/40 focus:outline-none"
                   />
                   <span className="shrink-0 rounded border border-[var(--border)] bg-white/[0.04] px-2 py-1 font-mono text-[10px] font-semibold text-[var(--text)]">
-                    USDC
+                    {mode === "buy" ? "USDC" : token.symbol}
                   </span>
                 </div>
               </div>
@@ -713,7 +713,7 @@ export default function TokenDetailPage() {
                     )}
                   </span>
                   <span className="shrink-0 rounded border border-[var(--border)] bg-white/[0.04] px-2 py-1 font-mono text-[10px] font-semibold text-[var(--text)]">
-                    {token.symbol}
+                    {mode === "buy" ? token.symbol : "USDC"}
                   </span>
                 </div>
               </div>
@@ -722,7 +722,11 @@ export default function TokenDetailPage() {
               <div className="mt-3 space-y-1.5 font-mono text-[11px] text-[var(--text-2)]">
                 <div className="flex justify-between">
                   <span>Rate</span>
-                  <span className="text-[var(--text)]">1 {token.symbol} = {formatUsdc(token.priceUsdc, 5)}</span>
+                  <span className="text-[var(--text)]">
+                    {mode === "buy"
+                      ? `1 ${token.symbol} = ${formatUsdc(token.priceUsdc, 5)}`
+                      : `1 USDC = ${(1 / token.priceUsdc).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${token.symbol}`}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Fee (1.5%)</span>
