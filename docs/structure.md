@@ -18,7 +18,7 @@ arc-launchpad/
 │   ├── profile/page.tsx      # Profile: claim creator fees, holdings
 │   ├── docs/page.tsx         # Docs hub: whitepaper, structure, contracts
 │   ├── layout.tsx            # Root layout + fonts
-│   ├── providers.tsx         # Privy auth provider
+│   ├── providers.tsx         # Wallet + auth providers
 │   └── globals.css           # Design tokens (dark, cyan accent)
 ├── components/
 │   ├── Navbar.tsx            # Top bar: Discover/Tokens/Launch/Bridge/Pool/Profile
@@ -26,14 +26,18 @@ arc-launchpad/
 │   ├── BondingBadge.tsx      # Standard / Early Buy badge
 │   ├── SortDropdown.tsx      # Reusable sort/filter dropdown
 │   ├── TradingViewChart.tsx  # TradingView lightweight-charts integration
+│   ├── WalletProvider.tsx    # EIP-1193 wallet context (MetaMask/Rabby)
 │   ├── CopyButton.tsx        # Copy-to-clipboard with feedback
 ├── lib/
-│   ├── mockData.ts           # Bonding tokens + trades + holdings (mock)
-│   ├── arcTokens.ts          # Cross-launchpad token index (mock)
+│   ├── swap.ts               # Contract addresses, ABIs, swap/launch helpers
+│   ├── arcTokens.ts          # Cross-launchpad token index
+│   ├── radar.ts              # RadarDex price data
 │   ├── types.ts              # TypeScript types
-│   └── useAuth.ts            # Privy auth hook (demo fallback)
+│   └── useAuth.ts            # Wallet auth hook (EIP-1193)
 ├── contracts/
-│   └── ArcodexBondingCurve.sol  # Bonding curve + 80/20 fee split
+│   ├── ArcodexBondingCurve.sol  # Bonding curve + 70/20/10 fee + dividends
+│   ├── ArcodexPool.sol          # AMM pool at graduation (same fee split)
+│   └── ArcodexFeeRouter.sol     # Atomic swap router (1.5% platform)
 └── docs/
     ├── whitepaper.md         # Full whitepaper
     ├── structure.md          # This document
@@ -48,9 +52,10 @@ arc-launchpad/
 | Language | TypeScript |
 | Styling | Tailwind CSS v4 + CSS variables |
 | Charts | TradingView lightweight-charts v5 |
-| Auth | Privy (wallet + X login, env-gated) |
+| Wallet | EIP-1193 (MetaMask, Rabby) |
+| Contracts | Solidity + ethers.js / viem |
 | Icons | Phosphor Icons |
-| Package manager | pnpm 11 |
+| Package manager | pnpm |
 | Deploy | Vercel |
 
 ## Design System
@@ -58,23 +63,19 @@ arc-launchpad/
 - **Theme:** Dark, crypto-native. Off-black background, cyan accent (`#22d3ee`).
 - **Typography:** Geist Sans + Geist Mono (mono for data/numbers).
 - **Currency:** USDC everywhere (Arc native asset).
-- **Fee model:** 1% fixed: 0.7% creator / 0.2% platform / 0.1% holder dividends.
+- **Fee model:** Launch 1% (70/20/10) · Swap 1.5% (100% platform).
 - **Bonding types:** Standard, Early Buy.
 
 ## Data Flow
 
-- **Static/mock data** (`lib/mockData.ts`, `lib/arcTokens.ts`) powers the UI today.
-- **Real integration path:** replace mock arrays with indexer/API responses; wire
-  swap panel to `ArcodexBondingCurve.buy/sell`; wire profile claim to
-  `claimCreatorFees`.
-- **Privy:** set `NEXT_PUBLIC_PRIVY_APP_ID` to enable real wallet + X login.
-  Without it the app runs in demo mode with mock auth.
+- **Static/mock data** (`lib/mockData.ts`, `lib/arcTokens.ts`) powers part of the UI today.
+- **Real integration path:** swap panel wired to `ArcodexBondingCurve.buy/sell`; launch wired to `launchToken`; profile claim wired to `claimCreatorFees` / `claimHolderRewards`.
+- **Wallet:** EIP-1193 injected provider (MetaMask/Rabby) with Add Arc Chain support.
 
 ## Smart Contract Flow
 
 1. `launchToken(...)` deploys `BondingCurveToken`, registers metadata.
-2. `buy(token, usdcIn)` prices USDC -> tokens on the curve, takes 1% fee,
-   splits 80/20 into accruing balances.
+2. `buy(token, usdcIn)` prices USDC -> tokens on the curve, takes 1% fee, splits 70/20/10 into accruing balances + holder dividend pool.
 3. `sell(token, tokensIn)` prices tokens -> USDC, same fee logic.
-4. `claimCreatorFees(token)` pays the creator fee wallet.
-5. `graduate(token, pool)` migrates fully-sold curves to an AMM pool.
+4. `claimCreatorFees(token)` pays the creator fee wallet; `claimHolderRewards(token)` pays USDC dividends pro-rata to balance.
+5. `graduate(token, pool)` migrates fully-sold curves to an AMM pool (ArcodexPool).
