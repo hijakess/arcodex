@@ -102,13 +102,33 @@ Arcodex is a protocol for launching and trading community tokens. Tokens launche
 
 ## Live Deployment (Arc mainnet, chainId 5042)
 
-| Contract | Address |
-|----------|---------|
-| ArcodexBondingCurve | \`0x21638Fe1D64dAcC598779Ee47f0B207Cb48fE4bB\` |
-| USDC (quote) | \`0x3600000000000000000000000000000000000000\` |
-| ArcodexPool | deployed per-token at graduation |
+| Contract | Address | Fee |
+|----------|---------|-----|
+| ArcodexBondingCurve | \`0x7D7184cB91d8c7b1bb4FF92CAA19707aCfCa67e3\` | 1% (launch tokens) |
+| ArcodexFeeRouter | \`0xADe3C6595f98772C61bc1Fb7643945ffe5bbea7B\` | 1.5% (swap existing tokens) |
+| USDC (quote) | \`0x3600000000000000000000000000000000000000\` | — |
+| ArcodexPool | deployed per-token at graduation | 1% |
 
-Deploy TX: \`0x77d8f56656cf3b3733d438be40330567296fb936cd5311bb2815e89b406514f8\`
+Bonding curve deploy TX: \`0x6ef486343892f042e3d4456eac76f4eaebe95bf01df54141f053394b939da07f\`
+Fee router deploy TX: \`0xd7efdf6aaef74a06a97c6daf24d6e80cc138e65e3e26b6a16d29e47ee0738e1f\`
+
+## Fee Model
+
+Two fee models, per user request:
+
+\\\`\\\`\\\`
+# Launch tokens (bonding curve + pool): 1.0%
+FEE_BPS = 100
+CREATOR_SHARE_BPS = 8000  # 80% -> creator (0.80%)
+PLATFORM_SHARE_BPS = 2000 # 20% -> platform (0.20%)
+
+# Swap of existing tokens (ArcodexFeeRouter): 1.5%
+FEE_BPS = 150
+CREATOR_SHARE_BPS = 8000  # 80% -> creator (1.20%)
+PLATFORM_SHARE_BPS = 2000 # 20% -> platform (0.30%)
+\\\`\\\`\\\`
+
+Applied on every buy and sell. Accrues on-chain per token; claimable separately.
 
 ## Contract: ArcodexBondingCurve
 
@@ -116,23 +136,13 @@ Source: contracts/ArcodexBondingCurve.sol
 
 The factory + exchange contract for Arcodex. Every token launch creates a BondingCurveToken (minimal ERC20). Buy/sell prices follow a linear bonding curve priced in USDC. Supports Standard and Early Buy (whitelist) bonding.
 
-## Fee Model
-
-\\\`\\\`\\\`
-FEE_BPS = 150             # 1.50% total
-CREATOR_SHARE_BPS = 8000  # 80% of fee -> creator (1.20%)
-PLATFORM_SHARE_BPS = 2000 # 20% of fee -> platform (0.30%)
-\\\`\\\`\\\`
-
-Applied on every buy and sell. Accrues on-chain per token; claimable separately.
-
 ## Core Functions
 
 | Function | Description |
 |----------|-------------|
 | launchToken(...) | Deploys token, registers metadata + socials + whitelist, seeds curve |
-| buy(token, usdcIn) | Buy curve tokens with USDC, 1.5% fee split 80/20 |
-| sell(token, tokensIn) | Sell curve tokens for USDC, 1.5% fee split 80/20 |
+| buy(token, usdcIn) | Buy curve tokens with USDC, 1% fee split 80/20 |
+| sell(token, tokensIn) | Sell curve tokens for USDC, 1% fee split 80/20 |
 | claimCreatorFees(token) | Creator claims accrued 80% share |
 | claimPlatformFees(token) | Owner claims accrued 20% share |
 | graduate(token) | Deploys ArcodexPool, migrates fully-sold curve to AMM pool |
@@ -140,11 +150,17 @@ Applied on every buy and sell. Accrues on-chain per token; claimable separately.
 | tokensToPrice(token, tokensIn) | Quote: tokens -> USDC |
 | isWhitelisted(token, wallet) | Check Early Buy whitelist status |
 
+## ArcodexFeeRouter (Swap existing tokens)
+
+Source: contracts/ArcodexFeeRouter.sol
+
+Atomic 1-tx fee router for tokens that already have DEX liquidity on Arc (e.g. RadarDex tokens). Skims a 1.5% fee (1.2% creator / 0.3% platform), routes the net amount through the underlying V3 swap router, delivers output straight to the user. Same pattern as RadarDex's fee router but at Arcodex's 1.5% rate.
+
 ## ArcodexPool (AMM)
 
 Source: contracts/ArcodexPool.sol
 
-Constant-product pool (token <-> USDC) deployed at graduation. Same 1.5% fee split 80/20, charged in the output asset. Supports swapUsdcIn / swapTokenIn, addLiquidity / removeLiquidity with LP tokens, and claimable creator/platform fees.
+Constant-product pool (token <-> USDC) deployed at graduation. Same 1% fee split 80/20 as the bonding curve, charged in the output asset. Supports swapUsdcIn / swapTokenIn, addLiquidity / removeLiquidity with LP tokens, and claimable creator/platform fees.
 
 ## Curve Formula
 

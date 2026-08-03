@@ -21,14 +21,18 @@ import {ArcodexPool} from "./ArcodexPool.sol";
  *   (whitelisted wallets get first access before public trading).
  * - At graduation (100% of the bonding curve sold) a full AMM pool is
  *   deployed (ArcodexPool) and the remaining supply + USDC migrate to it.
- * - Fees are fixed at 1.5% of every trade: 80% to the creator, 20% to the
- *   platform. Fees accrue on-chain and are claimable by each party.
+ * - Launch-token fees are fixed at 1% of every trade: 80% to the creator,
+ *   20% to the platform. Fees accrue on-chain and are claimable by each party.
  *
- * Fee split (per user request)
- * ----------------------------
- *   fee = 1.5% of trade notional
- *   creator share = 80% of fee  (1.2%)
- *   platform share = 20% of fee (0.3%)
+ * Fee split (per user request — LAUNCH tokens)
+ * ---------------------------------------------
+ *   fee = 1.0% of trade notional
+ *   creator share = 80% of fee  (0.8%)
+ *   platform share = 20% of fee (0.2%)
+ *
+ * NOTE: swap of EXISTING tokens goes through ArcodexFeeRouter at 1.5%
+ * (1.2% creator / 0.3% platform). This contract governs newly launched
+ * tokens at 1% (0.8% / 0.2%).
  *
  * @custom:security-contact https://arcodex.app
  */
@@ -37,7 +41,7 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /* ============ Constants ============ */
 
-    uint256 public constant FEE_BPS = 150; // 1.50% total fee
+    uint256 public constant FEE_BPS = 100; // 1.00% total fee (launch tokens)
     uint256 public constant CREATOR_SHARE_BPS = 8000; // 80% of fee
     uint256 public constant PLATFORM_SHARE_BPS = 2000; // 20% of fee
     uint256 public constant BPS = 10_000;
@@ -195,7 +199,7 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /**
      * @notice Buy tokens from the bonding curve with USDC.
-     * @dev Price increases linearly with supply. 1.5% fee on the USDC notional,
+     * @dev Price increases linearly with supply. 1.0% fee on the USDC notional,
      *      split 80/20 creator/platform. USDC fee stays in this contract and is
      *      claimable; the rest funds the curve. Early Buy tokens require the
      *      buyer to be whitelisted until the whitelist window ends.
@@ -232,7 +236,7 @@ contract ArcodexBondingCurve is Ownable, ReentrancyGuard {
 
     /**
      * @notice Sell tokens back to the bonding curve for USDC.
-     * @dev Price decreases linearly with supply. 1.5% fee applied on the USDC out.
+     * @dev Price decreases linearly with supply. 1.0% fee applied on the USDC out.
      */
     function sell(address token, uint256 tokensIn) external nonReentrant {
         TokenInfo storage info = tokens[token];

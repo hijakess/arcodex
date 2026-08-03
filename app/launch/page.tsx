@@ -284,7 +284,7 @@ export default function LaunchPage() {
                   Fee rate
                 </p>
                 <p className="mt-1 font-mono text-xl font-semibold text-[var(--accent)]">
-                  1.50%
+                  1.00%
                 </p>
                 <p className="mt-1 font-mono text-[10px] leading-relaxed text-[var(--text-2)]/80">
                   Fixed fee on every trade. Split: 80% creator · 20% platform.

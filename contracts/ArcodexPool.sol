@@ -11,11 +11,11 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  * @notice Constant-product AMM pool (token <-> USDC) for graduated Arcodex
  *         tokens. Deployed by the bonding curve at graduation.
  *
- * Fee model (per user request)
- * ----------------------------
- *   fee = 1.5% of swap notional
- *   creator share = 80% of fee  (1.2%)
- *   platform share = 20% of fee (0.3%)
+ * Fee model (per user request — LAUNCH tokens, post-graduation)
+ * ---------------------------------------------------------------
+ *   fee = 1.0% of swap notional
+ *   creator share = 80% of fee  (0.8%)
+ *   platform share = 20% of fee (0.2%)
  *
  * The fee is charged in the OUTPUT asset (standard constant-product AMM
  * style: reserves grow, LP value appreciates). Creator & platform shares are
@@ -28,7 +28,7 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
 
     /* ============ Constants ============ */
 
-    uint256 public constant FEE_BPS = 150; // 1.50% total fee
+    uint256 public constant FEE_BPS = 100; // 1.00% total fee
     uint256 public constant CREATOR_SHARE_BPS = 8000; // 80% of fee
     uint256 public constant PLATFORM_SHARE_BPS = 2000; // 20% of fee
     uint256 public constant BPS = 10_000;
@@ -92,7 +92,7 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
 
     /**
      * @notice Swap USDC -> token (buy).
-     * @dev 1.5% fee charged in tokens (output asset). Standard x*y=k with fee.
+     * @dev 1.0% fee charged in tokens (output asset). Standard x*y=k with fee.
      */
     function swapUsdcIn(uint256 usdcIn, uint256 minTokensOut) external nonReentrant returns (uint256 tokensOut) {
         require(usdcIn > 0, "in=0");
@@ -100,7 +100,7 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
         uint256 net = usdcIn - fee;
 
         uint256 tokensOutBefore = (net * reserveToken) / (reserveUsdc + net);
-        // charge the fee in output asset: 1.5% of the token amount
+        // charge the fee in output asset: 1.0% of the token amount
         tokensOut = tokensOutBefore - (tokensOutBefore * FEE_BPS) / BPS;
         require(tokensOut > 0, "out=0");
         require(tokensOut >= minTokensOut, "slippage");
@@ -118,7 +118,7 @@ contract ArcodexPool is Ownable, ReentrancyGuard {
 
     /**
      * @notice Swap token -> USDC (sell).
-     * @dev 1.5% fee charged in USDC (output asset).
+     * @dev 1.0% fee charged in USDC (output asset).
      */
     function swapTokenIn(uint256 tokenIn, uint256 minUsdcOut) external nonReentrant returns (uint256 usdcOut) {
         require(tokenIn > 0, "in=0");

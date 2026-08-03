@@ -17,6 +17,18 @@ import {
 } from "@/lib/radar";
 import { formatUsdc, formatNum, timeAgo, shortAddr } from "@/lib/mockData";
 import {
+  executeSwap,
+  approveToken,
+  quoteSwap,
+  ARCODEX_FEE_ROUTER,
+  SWAP_ROUTER,
+  USDC,
+  FEE_BPS,
+  CREATOR_SHARE_BPS,
+  PLATFORM_SHARE_BPS,
+  type Address,
+} from "@/lib/swap";
+import {
   XLogo,
   Globe,
   TelegramLogo,
@@ -41,6 +53,62 @@ export default function TokenDetailPage() {
   const [chartCandles, setChartCandles] = useState<Candle[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [swaps, setSwaps] = useState<RadarSwap[]>([]);
+  const [swapStatus, setSwapStatus] = useState<
+    "idle" | "quoting" | "approving" | "swapping" | "success" | "error"
+  >("idle");
+  const [swapError, setSwapError] = useState("");
+  const [lastTx, setLastTx] = useState("");
+
+  // Pool fee tier for this token (RadarDex V3 pools commonly use 1% = 10000)
+  const poolFee = 10000;
+
+  // Try swap via injected wallet (window.ethereum) -> ArcodexFeeRouter (1.5%)
+  async function handleSwap() {
+    if (!token) return;
+    const amt = Number(amount);
+    if (!amt || amt <= 0) {
+      setSwapError("Enter an amount first.");
+      setSwapStatus("error");
+      return;
+    }
+    const eth = (window as any).ethereum;
+    if (!eth?.request) {
+      setSwapError("No wallet detected. Install MetaMask / Rabby and add the Arc network (chainId 5042).");
+      setSwapStatus("error");
+      return;
+    }
+    try {
+      setSwapStatus("quoting");
+      setSwapError("");
+      const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
+      const account = accounts[0] as Address;
+      const tokenAddr = token.address as Address;
+
+      const isBuy = mode === "buy";
+      const tokenIn = isBuy ? USDC : tokenAddr;
+      const tokenOut = isBuy ? tokenAddr : USDC;
+      const amountIn = isBuy
+        ? BigInt(Math.round(amt * 1e6)) // USDC 6 decimals
+        : BigInt(Math.round(amt * 1e18)); // token 18 decimals
+
+      // 1.5% fee -> minOut = quote * (1 - 1.5% - slippage 2%)
+      setSwapStatus("quoting");
+      const quote = await quoteSwap(tokenIn, tokenOut, amountIn, poolFee);
+      const minOut = (quote * 9650n) / 10000n; // 3.5% total buffer
+
+      // approve only the input token
+      setSwapStatus("approving");
+      await approveToken(eth, account, tokenIn);
+
+      setSwapStatus("swapping");
+      const { txHash } = await executeSwap(eth, account, tokenIn, tokenOut, poolFee, amountIn, minOut);
+      setLastTx(txHash);
+      setSwapStatus("success");
+    } catch (e: any) {
+      setSwapError(e?.shortMessage || e?.message || "Swap failed.");
+      setSwapStatus("error");
+    }
+  }
 
   // Load token from the live feed (no mock fallback)
   useEffect(() => {
@@ -393,8 +461,43 @@ export default function TokenDetailPage() {
                 </div>
               </div>
 
-              <button className={`mt-5 w-full rounded-md py-3 font-mono text-sm font-semibold transition active:scale-[0.99] ${mode === "buy" ? "bg-[var(--pos)] text-[#05070b] hover:brightness-110" : "bg-[var(--neg)] text-white hover:brightness-110"}`}>
-                {mode === "buy" ? `Buy ${token.symbol}` : `Sell ${token.symbol}`}
+              {swapStatus === "error" && (
+                <p className="mt-3 rounded-md border border-[var(--neg)]/40 bg-[var(--neg)]/10 px-3 py-2 font-mono text-[11px] text-[var(--neg)]">
+                  {swapError}
+                </p>
+              )}
+              {swapStatus === "success" && (
+                <div className="mt-3 rounded-md border border-[var(--pos)]/40 bg-[var(--pos)]/10 px-3 py-2 font-mono text-[11px] text-[var(--pos)]">
+                  Swap sent!{" "}
+                  <a
+                    href={`https://arc.blockscout.com/tx/${lastTx}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    view tx
+                  </a>
+                </div>
+              )}
+
+              <button
+                onClick={handleSwap}
+                disabled={swapStatus === "quoting" || swapStatus === "approving" || swapStatus === "swapping"}
+                className={`mt-5 w-full rounded-md py-3 font-mono text-sm font-semibold transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${
+                  mode === "buy"
+                    ? "bg-[var(--pos)] text-[#05070b] hover:brightness-110"
+                    : "bg-[var(--neg)] text-white hover:brightness-110"
+                }`}
+              >
+                {swapStatus === "quoting"
+                  ? "Quoting…"
+                  : swapStatus === "approving"
+                    ? "Approving…"
+                    : swapStatus === "swapping"
+                      ? "Swapping…"
+                      : mode === "buy"
+                        ? `Buy ${token.symbol}`
+                        : `Sell ${token.symbol}`}
               </button>
 
               <p className="mt-3 text-center font-mono text-[10px] text-[var(--text-2)]/60">
