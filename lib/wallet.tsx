@@ -24,7 +24,7 @@ export const ARC_CHAIN_HEX = "0x13b2";
 // Railway stays as a fallback in case the proxy is unreachable.
 export const ARC_CHAIN_RPC = "https://arc-launchpad-seven.vercel.app/api/rpc";
 export const ARC_CHAIN_RPC_ALT = "https://fortest-production-9a201.up.railway.app";
-export const ARC_CHAIN_EXPLORER = "https://arc.blockscout.com";
+export const ARC_CHAIN_EXPLORER = "https://arcscan.app";
 
 export const ARC_CHAIN_PARAMS = {
   chainId: ARC_CHAIN_HEX,

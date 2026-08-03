@@ -10,7 +10,7 @@ export const CHAIN = {
   name: "Arc",
   nativeSymbol: "USDC",
   rpc: process.env.NEXT_PUBLIC_ARC_RPC || "",
-  explorer: process.env.NEXT_PUBLIC_ARC_EXPLORER || "https://arc.blockscout.com",
+  explorer: process.env.NEXT_PUBLIC_ARC_EXPLORER || "https://arcscan.app",
 };
 
 export const BONDING_TYPES: { value: BondingType; label: string; desc: string }[] = [

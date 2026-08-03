@@ -212,7 +212,7 @@ export default function LaunchPage() {
 
           {lastTx && (
             <a
-              href={`https://arc.blockscout.com/tx/${lastTx}`}
+              href={`https://arcscan.app/tx/${lastTx}`}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 py-2 font-mono text-xs text-[var(--accent)] transition hover:border-[var(--accent)]/50"

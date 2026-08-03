@@ -594,7 +594,7 @@ export default function TokenDetailPage() {
                     Curve graduated — liquidity is locked on the Arcodex DEX.
                     Pool:{" "}
                     <a
-                      href={`https://arc.blockscout.com/address/${curveInfo.pool}`}
+                      href={`https://arcscan.app/address/${curveInfo.pool}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline"
@@ -910,7 +910,7 @@ export default function TokenDetailPage() {
                 <div className="mt-3 rounded-md border border-[var(--pos)]/40 bg-[var(--pos)]/10 px-3 py-2 font-mono text-[11px] text-[var(--pos)]">
                   Swap sent!{" "}
                   <a
-                    href={`https://arc.blockscout.com/tx/${lastTx}`}
+                    href={`https://arcscan.app/tx/${lastTx}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline"
@@ -967,7 +967,7 @@ export default function TokenDetailPage() {
               </p>
             </div>
             <a
-              href={`https://arc.blockscout.com/token/${token.address}`}
+              href={`https://arcscan.app/token/${token.address}`}
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono text-[11px] text-[var(--accent)] transition hover:underline"
@@ -1024,7 +1024,7 @@ export default function TokenDetailPage() {
                       </td>
                       <td className="px-3 py-3 sm:px-4">
                         <a
-                          href={`https://arc.blockscout.com/address/${s.trader}`}
+                          href={`https://arcscan.app/address/${s.trader}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[var(--text-2)] transition hover:text-[var(--accent)]"
@@ -1037,7 +1037,7 @@ export default function TokenDetailPage() {
                       </td>
                       <td className="px-4 py-3 text-right sm:px-5">
                         <a
-                          href={`https://arc.blockscout.com/tx/${s.txHash}`}
+                          href={`https://arcscan.app/tx/${s.txHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-[var(--accent)] transition hover:underline"
