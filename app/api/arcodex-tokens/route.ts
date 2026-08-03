@@ -143,7 +143,10 @@ function decodeTokens(raw: string): TokenRaw {
 
 // ---- In-memory cache (per serverless instance) ----
 let cacheData: { json: unknown; at: number } | null = null;
-const CACHE_TTL = 60_000; // 60s
+const CACHE_TTL = 120_000; // 2min in-memory
+// CDN: fresh 2min, stale up to 10min (stale-while-revalidate) so the page
+// always paints instantly and refreshes in the background.
+const CDN_CACHE = "public, s-maxage=120, stale-while-revalidate=600";
 
 /** Run async work with a concurrency cap (gentle on the RPC quota). */
 async function mapLimit<T, R>(
@@ -167,7 +170,7 @@ async function mapLimit<T, R>(
 export async function GET() {
   if (cacheData && Date.now() - cacheData.at < CACHE_TTL) {
     return NextResponse.json(cacheData.json, {
-      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+      headers: { CDN_CACHE },
     });
   }
   try {
@@ -190,13 +193,13 @@ export async function GET() {
     const body = { count, tokens: tokens.reverse() };
     cacheData = { json: body, at: Date.now() };
     return NextResponse.json(body, {
-      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+      headers: { CDN_CACHE },
     });
   } catch (e: any) {
     // serve stale cache if the RPC is down
     if (cacheData) {
       return NextResponse.json(cacheData.json, {
-        headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+        headers: { CDN_CACHE },
       });
     }
     return NextResponse.json({ error: String(e?.message || e) }, { status: 502 });
