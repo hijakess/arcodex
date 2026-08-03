@@ -74,6 +74,10 @@ export default function TokenDetailPage() {
   const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
   const [tokenBalance, setTokenBalance] = useState<bigint | null>(null);
 
+  // Live quote (via server-side /api/rpc proxy — fast, no rate-limit)
+  const [liveQuote, setLiveQuote] = useState<number | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
   // Holder dividends (Plan A) — only for tokens launched on Arcodex
   const [isArcodex, setIsArcodex] = useState(false);
   const [pendingRewards, setPendingRewards] = useState<bigint | null>(null);
@@ -178,6 +182,40 @@ export default function TokenDetailPage() {
 
   // Pool fee tier for this token (RadarDex V3 pools commonly use 1% = 10000)
   const poolFee = 10000;
+
+  // Live quote whenever amount/mode changes (debounced) — shows the real
+  // output the fee router would give, instead of a rough estimate.
+  useEffect(() => {
+    if (!token) return;
+    const amt = Number(amount);
+    if (!amt || amt <= 0) {
+      setLiveQuote(null);
+      return;
+    }
+    let cancelled = false;
+    setQuoteLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const isBuy = mode === "buy";
+        const tokenIn = isBuy ? USDC : (token.address as Address);
+        const tokenOut = isBuy ? (token.address as Address) : USDC;
+        const amountIn = isBuy
+          ? BigInt(Math.round(amt * 1e6))
+          : BigInt(Math.round(amt * 1e18));
+        const q = await quoteSwap(tokenIn, tokenOut, amountIn, poolFee);
+        if (cancelled) return;
+        setLiveQuote(Number(q) / (isBuy ? 1e18 : 1e6));
+      } catch {
+        if (!cancelled) setLiveQuote(null);
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [amount, mode, token, poolFee]);
 
   // Try swap via injected wallet -> ArcodexFeeRouter (1.5%)
   async function handleSwap() {
@@ -662,7 +700,17 @@ export default function TokenDetailPage() {
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="font-mono text-xl text-[var(--text)]">
-                    {amount ? (Number(amount) / token.priceUsdc).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0.00"}
+                    {quoteLoading && amount ? (
+                      <span className="text-[var(--text-2)]/60">…</span>
+                    ) : liveQuote !== null ? (
+                      liveQuote.toLocaleString(undefined, {
+                        maximumFractionDigits: liveQuote < 1 ? 6 : 4,
+                      })
+                    ) : amount ? (
+                      (Number(amount) / token.priceUsdc).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                    ) : (
+                      "0.00"
+                    )}
                   </span>
                   <span className="shrink-0 rounded border border-[var(--border)] bg-white/[0.04] px-2 py-1 font-mono text-[10px] font-semibold text-[var(--text)]">
                     {token.symbol}
