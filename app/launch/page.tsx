@@ -287,7 +287,7 @@ export default function LaunchPage() {
                   1.00%
                 </p>
                 <p className="mt-1 font-mono text-[10px] leading-relaxed text-[var(--text-2)]/80">
-                  Fixed fee on every trade. Split: 80% creator · 20% platform.
+                  1% on every trade · 0.8% creator · 0.2% platform.
                 </p>
               </div>
               <label className="block">

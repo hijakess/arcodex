@@ -12,8 +12,9 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  *
  * Mirrors the RadarDex fee-router pattern but with Arcodex economics:
  *   fee = 1.5% of swap notional (FEE_BPS = 150)
- *   creator share  = 80% of fee (1.2%)
- *   platform share = 20% of fee (0.3%)
+ *   platform share = 100% of fee (1.5%)  -> Arcodex treasury
+ *   creator share  = 0% (creator revenue comes from launched tokens,
+ *   i.e. the 1% bonding-curve fee split 0.8% creator / 0.2% platform)
  *
  * One call: skims the Arcodex fee, routes the net amount through the
  * underlying DEX router (exactInputSingle), delivers output straight to the
@@ -27,8 +28,8 @@ contract ArcodexFeeRouter is Ownable, ReentrancyGuard {
     /* ============ Constants ============ */
 
     uint256 public constant MAX_FEE_BPS = 500; // 5% hard cap
-    uint256 public constant CREATOR_SHARE_BPS = 8000; // 80% of fee
-    uint256 public constant PLATFORM_SHARE_BPS = 2000; // 20% of fee
+    uint256 public constant CREATOR_SHARE_BPS = 0; // 0% of fee -> platform keeps 100%
+    uint256 public constant PLATFORM_SHARE_BPS = 10_000; // 100% of fee
     uint256 public constant BPS = 10_000;
 
     /* ============ State ============ */
@@ -36,11 +37,11 @@ contract ArcodexFeeRouter is Ownable, ReentrancyGuard {
     uint256 public feeBps = 150; // 1.50% default
     address public platformTreasury;
 
-    /// @notice Per-token creator fee wallet (receives 80% of fees).
+    /// @notice Per-token creator fee wallet (unused while CREATOR_SHARE_BPS = 0).
     mapping(address => address) public creatorFeeWallet;
-    /// @notice Accrued creator fees per token.
+    /// @notice Accrued creator fees per token (always 0 with the current split).
     mapping(address => uint256) public creatorClaimable;
-    /// @notice Accrued platform fees per token.
+    /// @notice Accrued platform fees per token (100% of the 1.5% fee).
     mapping(address => uint256) public platformClaimable;
 
     /* ============ Events ============ */
@@ -134,7 +135,7 @@ contract ArcodexFeeRouter is Ownable, ReentrancyGuard {
         emit FeeAccrued(token, creatorShare, platformShare);
     }
 
-    /// @notice Creator claims their 80% share for a token.
+    /// @notice Creator claims their share for a token (0% under the current split).
     function claimCreatorFees(address token) external nonReentrant {
         address wallet = creatorFeeWallet[token];
         require(wallet != address(0) && msg.sender == wallet, "not creator wallet");
@@ -145,7 +146,7 @@ contract ArcodexFeeRouter is Ownable, ReentrancyGuard {
         emit FeeClaimed(token, msg.sender, amount);
     }
 
-    /// @notice Platform claims its 20% share for a token.
+    /// @notice Platform claims its share (100% of the 1.5% fee) for a token.
     function claimPlatformFees(address token) external nonReentrant onlyOwner {
         uint256 amount = platformClaimable[token];
         require(amount > 0, "nothing");

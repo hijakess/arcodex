@@ -12,7 +12,7 @@ const DOCS: Record<string, { title: string; body: string }> = {
 
 ## Abstract
 
-Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset**. Every token launches on a bonding curve with a fixed **1.5% trading fee**, split **80% to the creator and 20% to the platform**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
+Arcodex is a memecoin launchpad built on the Arc blockchain, where **USDC is the native asset**. Tokens launch on a bonding curve with a **1% trading fee split 0.8% to the creator and 0.2% to the platform**. Swapping existing tokens costs a flat **1.5% fee (100% platform)**. Arcodex aggregates tokens launched across all launchpads on Arc into a single discoverable marketplace with built-in swap.
 
 ## 1. Problem
 
@@ -24,7 +24,7 @@ Arcodex provides:
 
 - One-click token launch with two bonding types (Standard, Early Buy)
 - Native USDC pricing everywhere - no ETH/WETH conversions
-- Fixed 1.5% fee with transparent 80/20 creator/platform split
+- Fixed 1.5% swap fee on existing tokens (100% platform) + 1% launch fee (0.8% creator / 0.2% platform)
 - Unified token index across all Arc launchpads with instant swap
 - Bridge for moving USDC onto Arc
 - Liquidity pools for post-graduation trading
@@ -46,14 +46,23 @@ Tokens launch on a linear bonding curve: price = startingPrice * (1 + sold / gra
 
 ## 4. Fee Model
 
-Fixed **1.50%** fee on every trade (buy and sell):
+Two fee models:
+
+**Launch tokens (bonding curve + pool) — 1%** per trade, split 80/20:
 
 | Party | Share | Effective rate |
 |-------|-------|----------------|
-| Creator | 80% | 1.20% |
-| Platform | 20% | 0.30% |
+| Creator | 80% of fee | 0.80% |
+| Platform | 20% of fee | 0.20% |
 
-Fees accrue on-chain in USDC. Creators claim from their profile; the platform claims to a treasury wallet.
+**Swap existing tokens (ArcodexFeeRouter) — 1.5%** per trade, 100% to the platform:
+
+| Party | Share | Effective rate |
+|-------|-------|----------------|
+| Platform | 100% of fee | 1.50% |
+| Creator | 0% | 0.00% |
+
+Fees accrue on-chain in USDC. Creators claim their share from their profile; the platform claims to a treasury wallet.
 
 ## 5. Architecture
 
@@ -62,10 +71,10 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) -> Arcodex API/Indexer -> 
 ## 6. Token Lifecycle
 
 1. Launch - creator deploys token with metadata (name, symbol, description, website, socials)
-2. Bonding - traders buy/sell against the curve in USDC; 1.5% fee accrues
+2. Bonding - traders buy/sell against the curve in USDC; 1% fee accrues (0.8% creator / 0.2% platform)
 3. Graduation - at 100% curve sold, liquidity migrates to a full AMM pool
-4. Trading - post-graduation, token trades freely on the AMM with the same fee split
-5. Claim - creator claims 80% of fees; platform claims 20%
+4. Trading - post-graduation, token trades freely on the AMM with the same 0.8% / 0.2% split
+5. Claim - creator claims 0.8%; platform claims 0.2%
 
 ## 7. Security
 
@@ -79,9 +88,10 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) -> Arcodex API/Indexer -> 
 
 | Item | Value |
 |------|-------|
-| Trading fee | 1.50% fixed |
-| Creator share | 80% |
-| Platform share | 20% |
+| Trading fee (launch tokens) | 1.00% fixed |
+| Creator share | 80% of launch fee (0.80%) |
+| Platform share | 20% of launch fee (0.20%) |
+| Swap fee (existing tokens) | 1.50% fixed, 100% platform |
 | Price currency | USDC (native) |
 | Curve graduation | 100% of bonding supply |
 
@@ -104,29 +114,29 @@ Arcodex is a protocol for launching and trading community tokens. Tokens launche
 
 | Contract | Address | Fee |
 |----------|---------|-----|
-| ArcodexBondingCurve | \`0x7D7184cB91d8c7b1bb4FF92CAA19707aCfCa67e3\` | 1% (launch tokens) |
-| ArcodexFeeRouter | \`0xADe3C6595f98772C61bc1Fb7643945ffe5bbea7B\` | 1.5% (swap existing tokens) |
+| ArcodexBondingCurve | \`0x7D7184cB91d8c7b1bb4FF92CAA19707aCfCa67e3\` | 1% (launch tokens, 0.8% creator / 0.2% platform) |
+| ArcodexFeeRouter | \`0x8FcA8fB88337BdedA54AA28227E1294923f5ca52\` | 1.5% (swap existing tokens, 100% platform) |
 | USDC (quote) | \`0x3600000000000000000000000000000000000000\` | — |
-| ArcodexPool | deployed per-token at graduation | 1% |
+| ArcodexPool | deployed per-token at graduation | 1% (0.8% creator / 0.2% platform) |
 
 Bonding curve deploy TX: \`0x6ef486343892f042e3d4456eac76f4eaebe95bf01df54141f053394b939da07f\`
-Fee router deploy TX: \`0xd7efdf6aaef74a06a97c6daf24d6e80cc138e65e3e26b6a16d29e47ee0738e1f\`
+Fee router deploy TX: \`0xf2658709884ca825df9e61658ddf33febff3bfdcfd38f525dba612a2ae3544f7\`
 
 ## Fee Model
 
-Two fee models, per user request:
+Two fee models:
 
-\\\`\\\`\\\`
-# Launch tokens (bonding curve + pool): 1.0%
+\`\`\`
+# Launch tokens (bonding curve + pool): 1.0% -> 0.8% creator / 0.2% platform
 FEE_BPS = 100
 CREATOR_SHARE_BPS = 8000  # 80% -> creator (0.80%)
 PLATFORM_SHARE_BPS = 2000 # 20% -> platform (0.20%)
 
-# Swap of existing tokens (ArcodexFeeRouter): 1.5%
+# Swap of existing tokens (ArcodexFeeRouter): 1.5% -> 100% platform
 FEE_BPS = 150
-CREATOR_SHARE_BPS = 8000  # 80% -> creator (1.20%)
-PLATFORM_SHARE_BPS = 2000 # 20% -> platform (0.30%)
-\\\`\\\`\\\`
+CREATOR_SHARE_BPS = 0     # 0% -> creator
+PLATFORM_SHARE_BPS = 10000 # 100% -> platform (1.50%)
+\`\`\`
 
 Applied on every buy and sell. Accrues on-chain per token; claimable separately.
 
@@ -154,7 +164,7 @@ The factory + exchange contract for Arcodex. Every token launch creates a Bondin
 
 Source: contracts/ArcodexFeeRouter.sol
 
-Atomic 1-tx fee router for tokens that already have DEX liquidity on Arc (e.g. RadarDex tokens). Skims a 1.5% fee (1.2% creator / 0.3% platform), routes the net amount through the underlying V3 swap router, delivers output straight to the user. Same pattern as RadarDex's fee router but at Arcodex's 1.5% rate.
+Atomic 1-tx fee router for tokens that already have DEX liquidity on Arc (e.g. RadarDex tokens). Skims a 1.5% fee (100% to the Arcodex platform), routes the net amount through the underlying V3 swap router, delivers output straight to the user. Same pattern as RadarDex's fee router but at Arcodex's 1.5% platform rate.
 
 ## ArcodexPool (AMM)
 

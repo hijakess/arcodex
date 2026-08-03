@@ -547,7 +547,7 @@ export default function TokenDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>Fee (1.5%)</span>
-                  <span className="text-[var(--text)]">1.2% creator · 0.3% platform</span>
+                  <span className="text-[var(--text)]">100% platform</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Liquidity</span>

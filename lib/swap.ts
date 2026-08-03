@@ -19,18 +19,20 @@ export const ARC_CHAIN = {
 
 // Deployed contracts (Arc mainnet)
 export const ARCODEX_BONDING = "0x7D7184cB91d8c7b1bb4FF92CAA19707aCfCa67e3" as Address;
-export const ARCODEX_FEE_ROUTER = "0xADe3C6595f98772C61bc1Fb7643945ffe5bbea7B" as Address;
+export const ARCODEX_FEE_ROUTER = "0x8FcA8fB88337BdedA54AA28227E1294923f5ca52" as Address;
 export const USDC = "0x3600000000000000000000000000000000000000" as Address;
 export const SWAP_ROUTER = "0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77" as Address;
 export const QUOTER = "0x7dfd4f31be6814d2906bde155c3e1b146eac1468" as Address;
 
-// Swap of existing tokens: 1.5% Arcodex fee, split 80/20 (1.2% / 0.3%)
+// Swap of existing tokens (ArcodexFeeRouter): 1.5% fee, 100% to platform
 export const FEE_BPS = 150n;
-export const CREATOR_SHARE_BPS = 8000n;
-export const PLATFORM_SHARE_BPS = 2000n;
+export const CREATOR_SHARE_BPS = 0n;
+export const PLATFORM_SHARE_BPS = 10000n;
 
 // Newly launched tokens (bonding curve): 1.0% fee, split 80/20 (0.8% / 0.2%)
 export const LAUNCH_FEE_BPS = 100n;
+export const LAUNCH_CREATOR_SHARE_BPS = 8000n;
+export const LAUNCH_PLATFORM_SHARE_BPS = 2000n;
 
 // ---- ABIs (minimal, matching deployed contracts) ----
 
