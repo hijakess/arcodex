@@ -97,9 +97,8 @@ Arcodex dApp (Discover, Launch, Tokens, Bridge, Pool) → Arcodex API/Indexer �
 | Creator share | 70% of launch fee (0.70%) |
 | Platform share | 20% of launch fee (0.20%) |
 | Holder dividends | 10% of launch fee (0.10%) |
-| Swap fee (existing tokens) | 1.50% fixed, 100% platform |
 | Price currency | USDC (native) |
-| Curve graduation | 100% of bonding supply |
+| Curve graduation | 80% of bonding supply |
 
 ## 9. Roadmap
 
@@ -153,7 +152,7 @@ arc-launchpad/
 ├── contracts/
 │   ├── ArcodexBondingCurve.sol  # Bonding curve + 70/20/10 fee + dividends
 │   ├── ArcodexPool.sol          # AMM pool at graduation (same fee split)
-│   └── ArcodexFeeRouter.sol     # Atomic swap router (1.5% platform)
+│   └── ArcodexFeeRouter.sol     # Atomic swap router
 └── docs/
     ├── whitepaper.md         # Full whitepaper
     ├── structure.md          # This document
@@ -179,7 +178,7 @@ arc-launchpad/
 - **Theme:** Dark, crypto-native. Off-black background, cyan accent (#22d3ee).
 - **Typography:** Geist Sans + Geist Mono (mono for data/numbers).
 - **Currency:** USDC everywhere (Arc native asset).
-- **Fee model:** Launch 1% (70/20/10) · Swap 1.5% (100% platform).
+- **Fee model:** Launch 1% (70/20/10).
 - **Bonding types:** Standard, Early Buy.
 
 ## Smart Contract Flow
@@ -199,7 +198,7 @@ arc-launchpad/
 | Contract | Address | Fee |
 |----------|---------|-----|
 | ArcodexBondingCurve | \`0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0\` | 1% (launch tokens, 0.7% creator / 0.2% platform / 0.1% holder) |
-| ArcodexFeeRouter | \`0x8FcA8fB88337BdedA54AA28227E1294923f5ca52\` | 1.5% (swap existing tokens, 100% platform) |
+| ArcodexFeeRouter | \`0x8FcA8fB88337BdedA54AA28227E1294923f5ca52\` | swap existing tokens, 100% platform |
 | USDC (quote) | \`0x3600000000000000000000000000000000000000\` | — |
 | ArcodexPool | deployed per-token at graduation | 1% (0.7% creator / 0.2% platform / 0.1% holder) |
 
@@ -215,10 +214,10 @@ CREATOR_SHARE_BPS = 7000  # 70% -> creator (0.70%)
 PLATFORM_SHARE_BPS = 2000 # 20% -> platform (0.20%)
 HOLDER_SHARE_BPS = 1000   # 10% -> holder dividend pool (0.10%)
 
-# Swap of existing tokens (ArcodexFeeRouter): 1.5% -> 100% platform
+# Swap of existing tokens (ArcodexFeeRouter): 100% platform
 FEE_BPS = 150
 CREATOR_SHARE_BPS = 0     # 0% -> creator
-PLATFORM_SHARE_BPS = 10000 # 100% -> platform (1.50%)
+PLATFORM_SHARE_BPS = 10000 # 100% -> platform
 \`\`\`
 
 Applied on every buy and sell. Accrues on-chain per token; claimable separately.
@@ -249,7 +248,7 @@ The factory + exchange contract for Arcodex. Every token launch creates a Bondin
 
 Source: contracts/ArcodexFeeRouter.sol
 
-Atomic 1-tx fee router for tokens that already have DEX liquidity on Arc (e.g. RadarDex). Skims a 1.5% fee (100% to the Arcodex platform), routes the net amount through the underlying V3 swap router, delivers output straight to the user.
+Atomic 1-tx fee router for tokens that already have DEX liquidity on Arc (e.g. RadarDex). Skims a fee (100% to the Arcodex platform), routes the net amount through the underlying V3 swap router, delivers output straight to the user.
 
 ## ArcodexPool (AMM)
 
