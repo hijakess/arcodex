@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import SortDropdown from "@/components/SortDropdown";
-import { arcTokens, ArcToken } from "@/lib/arcTokens";
+import { ArcToken } from "@/lib/arcTokens";
 import { fetchRadarTokens } from "@/lib/radar";
 import { formatUsdc, formatNum } from "@/lib/mockData";
 import { ArrowsLeftRight, CaretDown, Check, MagnifyingGlass, CircleNotch } from "@phosphor-icons/react";
@@ -44,7 +44,7 @@ export default function TokensPage() {
     };
   }, []);
 
-  const tokens = liveTokens ?? arcTokens;
+  const tokens = liveTokens ?? [];
   const launchpads = useMemo(
     () => ["all", ...Array.from(new Set(tokens.map((t) => t.launchpad)))],
     [tokens]
@@ -94,7 +94,7 @@ export default function TokensPage() {
               </span>
             ) : liveError ? (
               <span className="rounded-full border border-amber-300/30 bg-amber-400/5 px-2.5 py-1 font-mono text-[10px] text-amber-200/90">
-                live feed offline · showing cached list
+                live feed offline
               </span>
             ) : (
               <span className="rounded-full border border-[var(--pos)]/40 bg-[var(--pos)]/10 px-2.5 py-1 font-mono text-[10px] text-[var(--pos)]">
@@ -245,10 +245,36 @@ export default function TokensPage() {
           </table>
         </div>
 
-        {filtered.length === 0 && (
-          <div className="mt-16 text-center font-mono text-sm text-[var(--text-2)]">
-            No tokens match your filters.
+        {liveError ? (
+          <div className="mt-16 flex flex-col items-center gap-4 text-center">
+            <p className="font-mono text-sm text-[var(--text-2)]">
+              Could not reach the live token feed.
+            </p>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setLiveError(false);
+                fetchRadarTokens(500)
+                  .then((t) => {
+                    setLiveTokens(t);
+                    setLoading(false);
+                  })
+                  .catch(() => {
+                    setLiveError(true);
+                    setLoading(false);
+                  });
+              }}
+              className="rounded-md border border-[var(--accent)]/40 bg-[var(--accent-dim)] px-4 py-2 font-mono text-xs text-[var(--accent)] transition hover:border-[var(--accent)]"
+            >
+              Retry
+            </button>
           </div>
+        ) : (
+          filtered.length === 0 && (
+            <div className="mt-16 text-center font-mono text-sm text-[var(--text-2)]">
+              No tokens match your filters.
+            </div>
+          )
         )}
       </section>
     </main>

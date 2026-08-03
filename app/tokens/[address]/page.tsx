@@ -5,9 +5,9 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import TradingViewChart, { Candle, genCandles, candlesToMcap } from "@/components/TradingViewChart";
+import TradingViewChart, { Candle, candlesToMcap } from "@/components/TradingViewChart";
 import CopyButton from "@/components/CopyButton";
-import { arcTokens, ArcToken } from "@/lib/arcTokens";
+import { ArcToken } from "@/lib/arcTokens";
 import {
   fetchRadarToken,
   fetchRadarChart,
@@ -32,10 +32,8 @@ type Tf = keyof typeof CHART_TFS;
 
 export default function TokenDetailPage() {
   const params = useParams<{ address: string }>();
-  const [token, setToken] = useState<ArcToken | undefined>(() =>
-    arcTokens.find((t) => t.address === params.address)
-  );
-  const [loading, setLoading] = useState(!token);
+  const [token, setToken] = useState<ArcToken | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
@@ -44,10 +42,11 @@ export default function TokenDetailPage() {
   const [chartLoading, setChartLoading] = useState(false);
   const [swaps, setSwaps] = useState<RadarSwap[]>([]);
 
-  // Load token (static fallback first, then live detail)
+  // Load token from the live feed (no mock fallback)
   useEffect(() => {
     let cancelled = false;
-    if (token) return;
+    setLoading(true);
+    setToken(undefined);
     fetchRadarToken(params.address)
       .then((t) => {
         if (cancelled) return;
@@ -63,14 +62,14 @@ export default function TokenDetailPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.address]);
 
   // Load real candlesticks for the active timeframe
   const loadChart = useCallback(
     (address: string, t: Tf) => {
       setChartLoading(true);
-      fetchRadarChart(address, CHART_TFS[t], 1000)
+      const { tf: candleTf, limit } = CHART_TFS[t];
+      fetchRadarChart(address, candleTf, limit)
         .then((cs) => {
           if (!cs || cs.length === 0) return;
           setChartCandles(cs.map((c) => ({ time: c.time, value: c.close })));
@@ -99,13 +98,7 @@ export default function TokenDetailPage() {
     };
   }, [token]);
 
-  const chartData: Candle[] = useMemo(() => {
-    if (chartCandles.length > 0) return chartCandles;
-    return genCandles(
-      (token?.address ?? "0x").length + Math.round((token?.priceUsdc ?? 0.001) * 1000) || 7,
-      120
-    );
-  }, [chartCandles, token]);
+  const chartData: Candle[] = chartCandles;
 
   // Real supply: mcap / price, so mcap chart ends exactly at displayed mcap
   const supply = token && token.priceUsdc > 0 ? token.mcapUsdc / token.priceUsdc : 1_000_000;
@@ -176,7 +169,7 @@ export default function TokenDetailPage() {
 
             {/* Chart */}
             <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-mono text-2xl font-semibold text-[var(--text)]">
                     {formatUsdc(token.priceUsdc, 4)}
@@ -191,7 +184,7 @@ export default function TokenDetailPage() {
                     )}
                   </p>
                 </div>
-                <div className="flex items-center gap-1 rounded-md border border-[var(--border)] p-0.5">
+                <div className="flex items-center gap-1 self-start rounded-md border border-[var(--border)] p-0.5 sm:self-auto">
                   {(Object.keys(CHART_TFS) as Tf[]).map((t) => (
                     <button
                       key={t}
@@ -207,13 +200,19 @@ export default function TokenDetailPage() {
                   ))}
                 </div>
               </div>
-              <div className="mt-3 h-64 w-full">
-                <TradingViewChart
-                  priceData={chartData}
-                  mcapData={mcapData}
-                  accent={up ? "#22d3ee" : "#fb7185"}
-                  showMetricToggle
-                />
+              <div className="mt-3 h-56 w-full sm:h-64">
+                {chartData.length > 0 ? (
+                  <TradingViewChart
+                    priceData={chartData}
+                    mcapData={mcapData}
+                    accent={up ? "#22d3ee" : "#fb7185"}
+                    showMetricToggle
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center rounded-md border border-dashed border-[var(--border)] font-mono text-[11px] text-[var(--text-2)]">
+                    {chartLoading ? "loading chart…" : "no chart data available"}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -226,7 +225,7 @@ export default function TokenDetailPage() {
             </div>
 
             {/* Token details: socials, contract, pool */}
-            <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+            <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
               <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-2)]">
                 Token details
               </p>

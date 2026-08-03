@@ -32,6 +32,20 @@ export function candlesToMcap(data: Candle[], supply: number): Candle[] {
   return data.map((d) => ({ time: d.time, value: d.value * supply }));
 }
 
+/**
+ * Adaptive price formatter for the y-axis.
+ * Micro-priced tokens (0.0001–0.01) need 4–8 decimals, large values (mcap)
+ * need compact notation. Picks precision from the magnitude of the value.
+ */
+export function formatAxisPrice(p: number): string {
+  if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(2)}M`;
+  if (p >= 10_000) return `$${(p / 1_000).toFixed(1)}K`;
+  if (p >= 1) return `$${p.toFixed(2)}`;
+  if (p >= 0.01) return `$${p.toFixed(4)}`;
+  if (p >= 0.0001) return `$${p.toFixed(6)}`;
+  return `$${p.toFixed(8)}`;
+}
+
 export default function TradingViewChart({
   priceData,
   mcapData,
@@ -60,6 +74,9 @@ export default function TradingViewChart({
         textColor: "rgba(232,236,242,0.55)",
         fontFamily: "'Geist Mono', ui-monospace, monospace",
         fontSize: 11,
+      },
+      localization: {
+        priceFormatter: formatAxisPrice,
       },
       grid: {
         vertLines: { color: "rgba(255,255,255,0.04)" },

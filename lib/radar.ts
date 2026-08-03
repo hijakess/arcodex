@@ -9,11 +9,16 @@ const RADAR_API = "https://web-production-efe27.up.railway.app";
 const FALLBACK_IMAGE = "/tokens/arcl.svg";
 
 // Chart timeframes: Arcodex tab → RadarDex API tf (seconds per candle)
-export const CHART_TFS: Record<string, number> = {
-  "1H": 60,
-  "1D": 900,
-  "1W": 3600,
-  "1M": 21600,
+// limit is chosen so the visible window matches the tab label:
+//   1H → 1m candles × 120 ≈ 2h   (enough for a chart)
+//   1D → 15m candles × 96  = 24h
+//   1W → 1h candles × 168  = 7d
+//   1M → 6h candles × 120  = 30d
+export const CHART_TFS: Record<string, { tf: number; limit: number }> = {
+  "1H": { tf: 60, limit: 120 },
+  "1D": { tf: 900, limit: 96 },
+  "1W": { tf: 3600, limit: 168 },
+  "1M": { tf: 21600, limit: 120 },
 };
 
 export interface RadarCandle {
