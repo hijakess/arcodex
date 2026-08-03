@@ -202,13 +202,13 @@ arc-launchpad/
 
 | Contract | Address | Fee |
 |----------|---------|-----|
-| ArcodexBondingCurve | \\\`0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0\\\` | 1% (launch tokens, 0.7% creator / 0.2% platform / 0.1% holder) |
-| ArcodexFeeRouter | \\\`0x8FcA8fB88337BdedA54AA28227E1294923f5ca52\\\` | 1.5% (swap existing tokens, 100% platform) |
-| USDC (quote) | \\\`0x3600000000000000000000000000000000000000\\\` | — |
+| ArcodexBondingCurve | \`0x0264BebE36b68C0F6694D5f3dC233DFC2bbdF4d0\` | 1% (launch tokens, 0.7% creator / 0.2% platform / 0.1% holder) |
+| ArcodexFeeRouter | \`0x8FcA8fB88337BdedA54AA28227E1294923f5ca52\` | 1.5% (swap existing tokens, 100% platform) |
+| USDC (quote) | \`0x3600000000000000000000000000000000000000\` | — |
 | ArcodexPool | deployed per-token at graduation | 1% (0.7% creator / 0.2% platform / 0.1% holder) |
 
-Bonding curve deploy TX: \\\`0x5c902794ca70fef977878bd2cb66fc4dd56f0e0f9c51e3df01af932a82fd5aa2\\\`
-Fee router deploy TX: \\\`0xf2658709884ca825df9e61658ddf33febff3bfdcfd38f525dba612a2ae3544f7\\\`
+Bonding curve deploy TX: \`0x5c902794ca70fef977878bd2cb66fc4dd56f0e0f9c51e3df01af932a82fd5aa2\`
+Fee router deploy TX: \`0xf2658709884ca825df9e61658ddf33febff3bfdcfd38f525dba612a2ae3544f7\`
 
 ## Fee Model
 
